@@ -1,6 +1,6 @@
 {
     "name": "use-standard-schema",
-    "version": "0.4.3",
+    "version": "0.4.4",
     "description": "A React hook for managing form state using any standard schema compliant validation library.",
     "main": "dist/index.js",
     "module": "dist/index.mjs",
@@ -24,8 +24,7 @@
         "all": "npm run check:strict && npm run test && npm run fix && npm run format && npm run build",
         "pub": "npm run all && npm publish --access public",
         "test": "vitest",
-        "check:no-any": "node ./tools/check-no-any.js",
-        "check:strict": "npx tsc --noEmit && node ./tools/check-no-any.js",
+        "check:strict": "npx tsc --noEmit && biome lint --only suspicious/noExplicitAny src tests",
         "test:watch": "vitest --watch"
     },
     "keywords": [

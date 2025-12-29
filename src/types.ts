@@ -38,20 +38,13 @@ export type FormDefinition = {
 type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void ? I : never
 
 /* =============================================================================
- * Dot-path flattener (depth-limited to avoid “excessively deep” errors)
+ * Dot-path flattener
  * ========================================================================== */
 
 type Depth = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
 type DecMap = { 0: 0; 1: 0; 2: 1; 3: 2; 4: 3; 5: 4; 6: 5; 7: 6; 8: 7; 9: 8; 10: 9 }
 type Dec<D extends Depth> = DecMap[D]
 
-/**
- * Folds a FormDefinition into:
- *  - Mode="paths": a union of dot paths
- *  - Mode="values": a map { path: defaultValue } (for union-to-intersection)
- *
- * Depth-limited so TS doesn’t infinitely expand on generics.
- */
 type DotFold<
 	T,
 	Prev extends string = "",
@@ -70,7 +63,6 @@ type DotFold<
 					: never
 		}[keyof T]
 
-/** Public aliases */
 export type DotPaths<T, Prev extends string = "", D extends Depth = 10> = DotFold<T, Prev, "paths", string, D>
 
 type DotPathsToValues<T, Prev extends string = "", Value = string, D extends Depth = 10> = UnionToIntersection<
@@ -95,10 +87,9 @@ export type WatchValuesCallback<T extends FormDefinition> = {
 }
 
 /* =============================================================================
- * Unicode-aware key validation (no whitespace; "." reserved as path separator)
+ * Key validation
  * ========================================================================== */
 
-/** ECMAScript WhiteSpace + LineTerminators + NBSP + BOM */
 type WhiteSpaceChar =
 	| " "
 	| "\t"
@@ -126,13 +117,6 @@ type WhiteSpaceChar =
 	| "\u3000"
 	| "\uFEFF"
 
-/**
- * A single segment (between dots) is valid iff:
- *  - non-empty
- *  - contains NO Unicode whitespace chars
- *  - contains NO '.' (reserved for path separation)
- *  All other Unicode code points (incl. hyphens, emoji, etc.) are allowed.
- */
 type _IsValidSegment<S extends string> = S extends ""
 	? false
 	: S extends `${string}${WhiteSpaceChar}${string}`
@@ -141,7 +125,6 @@ type _IsValidSegment<S extends string> = S extends ""
 			? false
 			: true
 
-/** Full key: one or more valid segments separated by dots. */
 export type FormPathKey<S extends string> = S extends `${infer Head}.${infer Tail}`
 	? _IsValidSegment<Head> extends true
 		? FormPathKey<Tail>
@@ -150,19 +133,12 @@ export type FormPathKey<S extends string> = S extends `${infer Head}.${infer Tai
 		? S
 		: never
 
-/** Shape-only path type for APIs not tied to a specific schema. */
 export type AnyFormPathKey = FormPathKey<string>
 
-/**
- * Boolean-style deep check that preserves literal keys/inference:
- * - Skips the `string` index signature (`string extends K`)
- * - Checks only literal string keys
- * - Recurse into nested FormDefinition branches
- */
 type _HasInvalidKeys<T> = {
 	[K in keyof T]: K extends string
 		? string extends K
-			? false // skip index signature
+			? false
 			: FormPathKey<K> extends never
 				? true
 				: T[K] extends FormDefinition
@@ -171,11 +147,6 @@ type _HasInvalidKeys<T> = {
 		: false
 }[keyof T]
 
-/**
- * Public assertion:
- * - If any invalid key exists anywhere, resolve to `never`
- * - Otherwise, preserve the exact inferred shape of `T` (recursing only to check)
- */
 export type AssertValidFormKeysDeep<T extends FormDefinition> = true extends _HasInvalidKeys<T>
 	? never
 	: { [K in keyof T]: T[K] extends FormDefinition ? AssertValidFormKeysDeep<T[K]> : T[K] }
@@ -200,9 +171,7 @@ export interface UseStandardSchemaReturn<T extends FormDefinition> {
 		onBlur: (e: FocusEvent<HTMLFormElement>) => Promise<void>
 		onReset: () => void
 	}
-	getField: (
-		name: DotPaths<T>,
-	) => Partial<FieldData> & { defaultValue?: string; error: string; touched?: boolean; dirty?: boolean }
+	getField: (name: DotPaths<T>) => FieldData
 	getErrors: (name?: DotPaths<T>) => ErrorEntry[]
 	setField: (name: DotPaths<T>, value: string) => Promise<void>
 	setError: (name: DotPaths<T>, info: ErrorInfo) => void

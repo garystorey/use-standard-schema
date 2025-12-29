@@ -54,7 +54,6 @@ export function flattenFormDefinition(
 	parentPath?: string,
 ): Record<AnyFormPathKey, FieldDefinition>
 
-// implementation (unchanged body; note the general return type)
 export function flattenFormDefinition(
 	formDefinition: FormDefinition,
 	parentPath = "",
@@ -94,13 +93,14 @@ export function extractValidator(value: unknown): StandardValidator | undefined 
 
 	if (!isRecord(value)) return undefined
 
-	const recordValue = value as Record<string, unknown>
-	const standardValidator = recordValue["~standard"]
+	// Check Standard Schema V1 signature
+	const standardValidator = value["~standard"]
 	if (isRecord(standardValidator) && isValidatorFunction((standardValidator as { validate?: unknown }).validate)) {
 		return (standardValidator as { validate: StandardValidator }).validate
 	}
 
-	const directValidator = (recordValue as { validate?: unknown }).validate
+	// Fallback/Direct validator structure
+	const directValidator = (value as { validate?: unknown }).validate
 	if (isValidatorFunction(directValidator)) {
 		return directValidator
 	}
@@ -114,9 +114,9 @@ export function deriveValidationMessage(result: unknown): string {
 
 	const resultRecord = result as Record<string, unknown> & { issues?: unknown; message?: unknown }
 	const issues = Array.isArray(resultRecord.issues) ? resultRecord.issues : []
+
 	for (const issue of issues) {
 		if (!isRecord(issue)) continue
-
 		const message = (issue as { message?: unknown }).message
 		if (typeof message === "string" && message.trim().length > 0) {
 			return message
@@ -171,7 +171,6 @@ export function flattenDefaults<Def extends FormDefinition>(
 
 export function flattenDefaults(formDefinition: FormDefinition, parentPath?: string): Record<AnyFormPathKey, string>
 
-// implementation (unchanged body; note the general return type)
 export function flattenDefaults(formDefinition: FormDefinition, parentPath = ""): Record<string, string> {
 	const flattened: Record<string, string> = {}
 

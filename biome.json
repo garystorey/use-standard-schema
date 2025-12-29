@@ -7,7 +7,10 @@
 		"enabled": true,
 		"includes": ["src/**/*.ts"],
 		"rules": {
-			"a11y": "warn"
+			"a11y": "warn",
+			"suspicious": {
+				"noExplicitAny": "error"
+			}
 		},
 		"domains": {
 			"react": "recommended"

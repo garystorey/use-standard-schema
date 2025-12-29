@@ -108,10 +108,10 @@ export function SubscriptionPage() {
 Additional examples are available.
 
 - [CodeSandbox Demo](https://codesandbox.io/p/sandbox/use-standard-schema-vthys3?file=%2Fsrc%2FApp.tsx) - Try the hook in a live React playground.
-- [Dependent Fields example](https://github.com/garystorey/use-standard-shema/tree/main/examples/dependent-field-validation.tsx) - An example that keeps two related fields in sync using `setField` and `setError`.
-- [Custom Component example](https://github.com/garystorey/use-standard-shema/tree/main/examples/custom-field-component.tsx) - Share reusable inputs via `FieldData`.
-- [Valibot example](https://github.com/garystorey/use-standard-shema/tree/main/examples/valibot-login.tsx) - Build a simple login form powered by Valibot validators.
-- [Shadcn Field example](https://github.com/garystorey/use-standard-shema/tree/main/examples/shadcn-field.tsx) - Wire `useStandardSchema` metadata into the shadcn/ui `Field` primitives.
+- [Dependent Fields example](https://github.com/garystorey/use-standard-schema/tree/main/examples/dependent-field-validation.tsx) - An example that keeps two related fields in sync using `setField` and `setError`.
+- [Custom Component example](https://github.com/garystorey/use-standard-schema/tree/main/examples/custom-field-component.tsx) - Share reusable inputs via `FieldData`.
+- [Valibot example](https://github.com/garystorey/use-standard-schema/tree/main/examples/valibot-login.tsx) - Build a simple login form powered by Valibot validators.
+- [Shadcn Field example](https://github.com/garystorey/use-standard-schema/tree/main/examples/shadcn-field.tsx) - Wire `useStandardSchema` metadata into the shadcn/ui `Field` primitives.
 
 ### Nested object fields
 
