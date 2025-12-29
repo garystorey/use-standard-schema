@@ -155,7 +155,7 @@ export interface FieldData {
 	name: string
 	label: string
 	description?: string
-	defaultValue: string // Enforce string for stability
+	defaultValue?: string
 	errorId: string
 	describedById: string
 	touched: boolean
