@@ -515,7 +515,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				watchEntriesRef.current = watchEntriesRef.current.filter((existing) => existing !== entry)
 			}
 		}) as WatchValuesCallback<T>,
-		[],
+		[assertFieldExists],
 	)
 
 	return {
