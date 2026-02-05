@@ -1,10 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec"
 import type { FocusEvent, FormEvent } from "react"
 
-/* =============================================================================
- * Core domain types
- * ========================================================================== */
-
 export type FormValues = {
 	[key: string]: string
 }
@@ -37,7 +33,6 @@ export interface FieldDefinition {
 export type SchemaValidator = FieldDefinition["validate"]["~standard"]["validate"]
 export type StandardValidator = SchemaValidator | ((value: string) => unknown | Promise<unknown>)
 
-/** A form schema tree: keys map to either fields or nested groups. */
 export type FormDefinition = {
 	[key: string]: FieldDefinition | FormDefinition
 }
@@ -52,16 +47,7 @@ export type FlatDefaults<T extends FormDefinition = FormDefinition> = {
 	[K in DotPaths<T>]: string
 } & FormValues
 
-/* =============================================================================
- * Utilities
- * ========================================================================== */
-
-/** Merge a union of object types into a single object type. */
 type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void ? I : never
-
-/* =============================================================================
- * Dot-path flattener
- * ========================================================================== */
 
 type Depth = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
 type DecMap = { 0: 0; 1: 0; 2: 1; 3: 2; 4: 3; 5: 4; 6: 5; 7: 6; 8: 7; 9: 8; 10: 9 }
@@ -117,10 +103,6 @@ export type WatchValuesCallback<T extends FormDefinition> = {
 	): () => void
 }
 
-/* =============================================================================
- * Key validation
- * ========================================================================== */
-
 type WhiteSpaceChar =
 	| " "
 	| "\t"
@@ -163,8 +145,6 @@ export type FormPathKey<S extends string> = S extends `${infer Head}.${infer Tai
 	: _IsValidSegment<S> extends true
 		? S
 		: never
-
-export type AnyFormPathKey = FormPathKey<string>
 
 type _HasInvalidKeys<T> = {
 	[K in keyof T]: K extends string

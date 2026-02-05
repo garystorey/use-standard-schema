@@ -30,16 +30,9 @@ import type {
 	WatchValuesCallback,
 } from "./types"
 
-/**
- * Custom hook to manage form state based on a form definition.
- * @param formDefinition - The form definition object.
- * @returns An object containing methods and state for managing the form.
- */
 function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStandardSchemaReturn<T> {
 	type FieldKey = DotPaths<T>
 
-	// --- Derived Data ---
-	// Flatten the definition once to allow O(1) lookups for field configs
 	const flatFormDefinition = useMemo(
 		() => flattenFormDefinition(formDefinition) as FlatFormDefinition<T>,
 		[formDefinition],
@@ -58,21 +51,17 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 	const formDefinitionKeys = useMemo(() => Object.keys(flatFormDefinition), [flatFormDefinition])
 
-	// --- State ---
 	const [data, setData] = useState<FormValues>(initialValues)
 	const [errors, setErrors] = useState<Errors>({})
 	const [touched, setTouched] = useState<Flags>({})
 	const [dirty, setDirty] = useState<Flags>({})
 
-	// --- Refs (Mutable/Subscription State) ---
 	const watchEntriesRef = useRef<FormWatchEntry<string>[]>([])
 	const previousDataRef = useRef<FormValues>(initialValues)
 
-	// Validation concurrency management
 	const validationTokensRef = useRef<ValidationTokenMap<string>>({})
 	const validationRunId = useRef(0)
 
-	// --- Internal Helpers ---
 	const ensureTouched = useCallback((prev: Flags, field: string) => {
 		return prev[field] ? prev : { ...prev, [field]: true }
 	}, [])
@@ -89,16 +78,6 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		return next
 	}, [])
 
-	const assertFieldExists = useCallback(
-		(field: string) => {
-			if (!(field in flatFormDefinition)) {
-				// Exact message match for "surface errors when interacting with unknown fields" test
-				throw new Error(`Field "${field}" not found`)
-			}
-		},
-		[flatFormDefinition],
-	)
-
 	const getFieldDefinition = useCallback(
 		(field: string): FieldDefinition => {
 			const def = flatFormDefinition[field]
@@ -110,9 +89,6 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		[flatFormDefinition],
 	)
 
-	// --- Effects ---
-
-	// Reset state when initialValues change (e.g. schema swap)
 	useEffect(() => {
 		setData(initialValues)
 		setErrors({})
@@ -123,7 +99,6 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		previousDataRef.current = initialValues
 	}, [initialValues])
 
-	// Dispatch watchValues listeners whenever canonical data mutates
 	useEffect(() => {
 		const prev = previousDataRef.current
 		if (prev === data) return
@@ -151,18 +126,18 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				continue
 			}
 
-			// Global watcher
 			entry.callback(snapshot)
 		}
 	}, [data])
 
-	// --- Validation Logic ---
-
-	// Pure per-field validator (no state updates)
 	const validateFieldValue = useCallback(
 		async (field: string, value: string): Promise<string> => {
-			const fieldDef = flatFormDefinition[field]
-			if (!fieldDef) return `Field "${String(field)}" not found`
+			let fieldDef: FieldDefinition
+			try {
+				fieldDef = getFieldDefinition(field)
+			} catch {
+				return `Field "${String(field)}" not found`
+			}
 
 			const validator = extractValidator(fieldDef.validate)
 			if (!validator) return "Validator not available"
@@ -174,10 +149,9 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				return deriveThrownMessage(error)
 			}
 		},
-		[flatFormDefinition],
+		[getFieldDefinition],
 	)
 
-	// Single-field validate (updates state for that field)
 	const validateField = useCallback(
 		async (field: string, value: string) => {
 			const runId = validationRunId.current
@@ -197,7 +171,6 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		[validateFieldValue],
 	)
 
-	// Full-form validate (batch state update, prevents UI flicker)
 	const validateForm = useCallback(
 		async (values?: FormValues) => {
 			const sourceValues = values ?? data
@@ -274,8 +247,6 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		[formDefinitionKeys, data, validateFieldValue],
 	)
 
-	// --- Public Methods ---
-
 	const resetForm = useCallback(() => {
 		setData(initialValues)
 		setErrors({})
@@ -347,7 +318,6 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				if (!field || !(field in flatFormDefinition)) return
 
 				setTouched((prev) => ensureTouched(prev, field))
-				// Clear error on focus (Satisfies test: "onFocus sets touched and clears error")
 				setErrors((prev) => (prev[field] === "" ? prev : { ...prev, [field]: "" }))
 			}
 
@@ -386,13 +356,10 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 	const getField = useCallback(
 		(name: FieldKey): FieldData => {
 			const key = name as string
-			assertFieldExists(key)
-
 			const def = getFieldDefinition(key)
 			const describedById = `${key}-description`
 			const errorId = `${key}-error`
 
-			// Destructure to avoid leaking internal definition props if needed
 			const { validate: _validate, ...fieldDef } = def
 
 			return {
@@ -406,13 +373,13 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				errorId,
 			}
 		},
-		[flatFormDefinition, data, errors, touched, dirty, assertFieldExists, getFieldDefinition],
+		[data, errors, touched, dirty, getFieldDefinition],
 	)
 
 	const setField = useCallback(
 		async (name: FieldKey, value: string) => {
 			const field = name as string
-			assertFieldExists(field)
+			getFieldDefinition(field)
 			const initialValue = initialValueStrings[field] ?? ""
 			const isDirty = value !== initialValue
 
@@ -422,13 +389,13 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 			await validateField(field, value)
 		},
-		[validateField, initialValueStrings, assertFieldExists, ensureTouched, updateDirtyFlags],
+		[validateField, initialValueStrings, getFieldDefinition, ensureTouched, updateDirtyFlags],
 	)
 
 	const setError = useCallback(
 		(name: FieldKey, info: ErrorInfo) => {
 			const field = name as string
-			assertFieldExists(field)
+			getFieldDefinition(field)
 
 			const message = resolveManualErrorMessage(info)
 
@@ -443,14 +410,13 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				return current === message ? prev : { ...prev, [field]: message }
 			})
 		},
-		[assertFieldExists],
+		[getFieldDefinition],
 	)
 
 	const getErrors = useCallback(
 		(name?: FieldKey): ErrorEntry[] => {
 			if (name) {
 				const key = name as string
-				assertFieldExists(key)
 				const def = getFieldDefinition(key)
 				const error = errors[key]
 				if (!error) return []
@@ -477,7 +443,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 			}
 			return errorEntries
 		},
-		[formDefinitionKeys, errors, assertFieldExists, getFieldDefinition],
+		[formDefinitionKeys, errors, getFieldDefinition],
 	)
 
 	const isTouched = useCallback(
@@ -517,7 +483,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 			if (targets) {
 				for (const field of targets) {
-					assertFieldExists(field as string)
+					getFieldDefinition(field as string)
 				}
 			}
 
@@ -533,7 +499,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				watchEntriesRef.current = watchEntriesRef.current.filter((existing) => existing !== entry)
 			}
 		}) as WatchValuesCallback<T>,
-		[assertFieldExists],
+		[getFieldDefinition],
 	)
 
 	return {

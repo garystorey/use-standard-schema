@@ -1,7 +1,5 @@
 import type {
-	AnyFormPathKey,
 	AssertValidFormKeysDeep,
-	DotPaths,
 	ErrorInfo,
 	FieldDefinition,
 	FlatDefaults,
@@ -11,14 +9,12 @@ import type {
 	StandardValidator,
 } from "./types"
 
-/** Define and return the form definition as is. */
 export function defineForm<T extends FormDefinition>(
 	formDefinition: AssertValidFormKeysDeep<T>,
 ): AssertValidFormKeysDeep<T> {
 	return formDefinition
 }
 
-/** Check if a value is a plain object (not an array, function, etc.) */
 function isPlainObject(value: unknown): value is { [key: string]: unknown } {
 	return (
 		typeof value === "object" &&
@@ -27,12 +23,10 @@ function isPlainObject(value: unknown): value is { [key: string]: unknown } {
 	)
 }
 
-/** Check if a value is a FieldDefinition */
 export function isFieldDefinition(obj: unknown): obj is FieldDefinition {
 	return typeof obj === "object" && obj !== null && "label" in obj && "validate" in obj
 }
 
-/** Convert a flat object of key-value pairs to FormData */
 export function toFormData(data: FormValues): FormData
 export function toFormData(data: { [key: string]: unknown }) {
 	const formData = new FormData()
@@ -44,7 +38,6 @@ export function toFormData(data: { [key: string]: unknown }) {
 	return formData
 }
 
-// ---------------- flattenFormDefinition ----------------
 export function flattenFormDefinition<Def extends FormDefinition>(
 	formDefinition: Def,
 	parentPath?: string,
@@ -77,15 +70,11 @@ export function flattenFormDefinition(
 	return flattened
 }
 
-/* =============================================================================
- * Validator + messaging helpers
- * ========================================================================== */
-
-export function isValidatorFunction(value: unknown): value is StandardValidator {
+function isValidatorFunction(value: unknown): value is StandardValidator {
 	return typeof value === "function"
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null
 }
 
@@ -164,7 +153,6 @@ export function toInputString(value: unknown): string {
 	return String(value)
 }
 
-// ---------------- flattenDefaults ----------------
 export function flattenDefaults<Def extends FormDefinition>(
 	formDefinition: Def,
 	parentPath?: string,
