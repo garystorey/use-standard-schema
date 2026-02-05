@@ -438,13 +438,15 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 	const getErrors = useCallback(
 		(name?: FieldKey): ErrorEntry[] => {
 			if (name) {
-				const error = errors[name as string]
+				const key = name as string
+				assertFieldExists(key)
+				const error = errors[key]
 				if (!error) return []
 				return [
 					{
-						name: name as string,
+						name: key,
 						error,
-						label: flatFormDefinition[name as string]?.label,
+						label: flatFormDefinition[key].label,
 					},
 				]
 			}
@@ -462,7 +464,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 			}
 			return errorEntries
 		},
-		[formDefinitionKeys, errors, flatFormDefinition],
+		[formDefinitionKeys, errors, flatFormDefinition, assertFieldExists],
 	)
 
 	const isTouched = useCallback(
@@ -518,7 +520,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				watchEntriesRef.current.delete(entry)
 			}
 		}) as WatchValuesCallback<T>,
-		[],
+		[assertFieldExists],
 	)
 
 	return {
