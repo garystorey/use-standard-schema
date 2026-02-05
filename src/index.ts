@@ -62,7 +62,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 	// --- Refs (Mutable/Subscription State) ---
 	type WatchEntry = { fields?: string[]; callback: (values: FormValues) => void }
-	const watchEntriesRef = useRef<Set<WatchEntry>>(new Set())
+	const watchEntriesRef = useRef<WatchEntry[]>([])
 	const previousDataRef = useRef<FormValues>(initialValues)
 
 	// Validation concurrency management
@@ -115,21 +115,18 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		if (prev === data) return
 
 		previousDataRef.current = data
-		if (watchEntriesRef.current.size === 0) return
+		if (watchEntriesRef.current.length === 0) return
 
 		const snapshot = data
-		const entries = Array.from(watchEntriesRef.current)
+		const entries = [...watchEntriesRef.current]
+		const prevMap = new Map(Object.entries(prev))
 
 		for (const entry of entries) {
 			const { fields } = entry
 			if (fields && fields.length > 0) {
-				let relevantChange = false
-				for (const field of fields) {
-					if ((prev[field] ?? "") !== (snapshot[field] ?? "")) {
-						relevantChange = true
-						break
-					}
-				}
+				const relevantChange = fields.some(
+					(field) => (prevMap.get(field) ?? "") !== (snapshot[field] ?? ""),
+				)
 				if (!relevantChange) continue
 
 				const selection: FormValues = {}
@@ -515,9 +512,9 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				},
 			}
 
-			watchEntriesRef.current.add(entry)
+			watchEntriesRef.current = [...watchEntriesRef.current, entry]
 			return () => {
-				watchEntriesRef.current.delete(entry)
+				watchEntriesRef.current = watchEntriesRef.current.filter((existing) => existing !== entry)
 			}
 		}) as WatchValuesCallback<T>,
 		[assertFieldExists],
