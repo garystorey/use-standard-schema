@@ -5,9 +5,21 @@ import type { FocusEvent, FormEvent } from "react"
  * Core domain types
  * ========================================================================== */
 
-export type FormValues = Record<string, string>
-export type Flags = Record<string, boolean>
-export type Errors = Record<string, string>
+export type FormValues = {
+	[key: string]: string
+}
+
+export type Flags = {
+	[key: string]: boolean
+}
+
+export type Errors = {
+	[key: string]: string
+}
+
+export type Keyed<K extends string, V> = {
+	[P in K]: V
+}
 
 export type ErrorDetails = {
 	message?: string | null
@@ -29,6 +41,16 @@ export type StandardValidator = SchemaValidator | ((value: string) => unknown | 
 export type FormDefinition = {
 	[key: string]: FieldDefinition | FormDefinition
 }
+
+export type FlatFormDefinition<T extends FormDefinition = FormDefinition> = {
+	[K in DotPaths<T>]: FieldDefinition
+} & {
+	[key: string]: FieldDefinition | undefined
+}
+
+export type FlatDefaults<T extends FormDefinition = FormDefinition> = {
+	[K in DotPaths<T>]: string
+} & FormValues
 
 /* =============================================================================
  * Utilities
@@ -73,7 +95,16 @@ export type TypeFromDefinition<T extends FormDefinition, Value = string> = {
 	[K in keyof DotPathsToValues<T, "", Value>]: DotPathsToValues<T, "", Value>[K]
 }
 
-export type FormSnapshot<T extends FormDefinition> = Record<DotPaths<T>, string>
+export type FormSnapshot<T extends FormDefinition> = {
+	[K in DotPaths<T>]: string
+}
+
+export type FormWatchEntry<K extends string = string> = {
+	fields?: readonly K[]
+	callback: (values: FormValues) => void
+}
+
+export type ValidationTokenMap<K extends string = string> = Partial<Keyed<K, number>>
 
 export type ErrorEntry = { name: string; error: string; label: string }
 

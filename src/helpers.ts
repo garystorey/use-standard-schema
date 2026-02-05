@@ -4,6 +4,8 @@ import type {
 	DotPaths,
 	ErrorInfo,
 	FieldDefinition,
+	FlatDefaults,
+	FlatFormDefinition,
 	FormDefinition,
 	FormValues,
 	StandardValidator,
@@ -17,7 +19,7 @@ export function defineForm<T extends FormDefinition>(
 }
 
 /** Check if a value is a plain object (not an array, function, etc.) */
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+function isPlainObject(value: unknown): value is { [key: string]: unknown } {
 	return (
 		typeof value === "object" &&
 		value !== null &&
@@ -31,9 +33,8 @@ export function isFieldDefinition(obj: unknown): obj is FieldDefinition {
 }
 
 /** Convert a flat object of key-value pairs to FormData */
-export function toFormData(data: Record<AnyFormPathKey, string>): FormData
 export function toFormData(data: FormValues): FormData
-export function toFormData(data: Record<string, string>) {
+export function toFormData(data: { [key: string]: unknown }) {
 	const formData = new FormData()
 	Object.entries(data).forEach(([key, value]) => {
 		if (value !== undefined && value !== null) {
@@ -47,20 +48,20 @@ export function toFormData(data: Record<string, string>) {
 export function flattenFormDefinition<Def extends FormDefinition>(
 	formDefinition: Def,
 	parentPath?: string,
-): Record<DotPaths<Def>, FieldDefinition>
+): FlatFormDefinition<Def>
 
 export function flattenFormDefinition(
 	formDefinition: FormDefinition,
 	parentPath?: string,
-): Record<AnyFormPathKey, FieldDefinition>
+): FlatFormDefinition
 
 export function flattenFormDefinition(
 	formDefinition: FormDefinition,
 	parentPath = "",
-): Record<string, FieldDefinition> {
-	const flattened: Record<string, FieldDefinition> = {}
+): FlatFormDefinition {
+	const flattened = {} as FlatFormDefinition
 
-	for (const [propertyKey, propertyValue] of Object.entries(formDefinition as Record<string, unknown>)) {
+	for (const [propertyKey, propertyValue] of Object.entries(formDefinition)) {
 		const fullPath = parentPath ? `${parentPath}.${propertyKey}` : propertyKey
 
 		if (isFieldDefinition(propertyValue)) {
@@ -112,7 +113,7 @@ export function deriveValidationMessage(result: unknown): string {
 	if (typeof result === "string") return result
 	if (!isRecord(result)) return ""
 
-	const resultRecord = result as Record<string, unknown> & { issues?: unknown; message?: unknown }
+	const resultRecord = result as { [key: string]: unknown; issues?: unknown; message?: unknown }
 	const issues = Array.isArray(resultRecord.issues) ? resultRecord.issues : []
 
 	for (const issue of issues) {
@@ -167,14 +168,14 @@ export function toInputString(value: unknown): string {
 export function flattenDefaults<Def extends FormDefinition>(
 	formDefinition: Def,
 	parentPath?: string,
-): Record<DotPaths<Def>, string>
+): FlatDefaults<Def>
 
-export function flattenDefaults(formDefinition: FormDefinition, parentPath?: string): Record<AnyFormPathKey, string>
+export function flattenDefaults(formDefinition: FormDefinition, parentPath?: string): FlatDefaults
 
-export function flattenDefaults(formDefinition: FormDefinition, parentPath = ""): Record<string, string> {
-	const flattened: Record<string, string> = {}
+export function flattenDefaults(formDefinition: FormDefinition, parentPath = ""): FlatDefaults {
+	const flattened = {} as FlatDefaults
 
-	for (const [propertyKey, propertyValue] of Object.entries(formDefinition as Record<string, unknown>)) {
+	for (const [propertyKey, propertyValue] of Object.entries(formDefinition)) {
 		const fullPath = parentPath ? `${parentPath}.${propertyKey}` : propertyKey
 
 		if (isFieldDefinition(propertyValue)) {
