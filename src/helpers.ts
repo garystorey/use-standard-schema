@@ -27,7 +27,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /** Check if a value is a FieldDefinition */
 export function isFieldDefinition(obj: unknown): obj is FieldDefinition {
-	return typeof obj === "object" && obj !== null && "label" in obj && "validate" in obj
+	if (!isRecord(obj)) return false
+	const candidate = obj as { label?: unknown; validate?: unknown }
+	if (typeof candidate.label !== "string") return false
+	return extractValidator(candidate.validate) !== undefined
 }
 
 /** Convert a flat object of key-value pairs to FormData */

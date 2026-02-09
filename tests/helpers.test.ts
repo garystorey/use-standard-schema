@@ -45,6 +45,20 @@ describe("helpers", () => {
 		expect(flat["a"].label).toBe("A")
 	})
 
+	it("flattenFormDefinition handles groups with label/validate field names", () => {
+		const trickyForm = defineForm({
+			group: {
+				label: { label: "Inner Label", defaultValue: "", validate: noopString() },
+				validate: { label: "Inner Validate", defaultValue: "", validate: noopString() },
+			},
+		})
+
+		const flat = flattenFormDefinition(trickyForm)
+
+		expect(Object.keys(flat).sort()).toEqual(["group.label", "group.validate"])
+		expect(flat["group.label"].label).toBe("Inner Label")
+	})
+
 	it("flattenDefaults returns dot-path defaults (empty string if missing)", () => {
 		const defs = flattenDefaults(form)
 		expect(defs).toEqual({
