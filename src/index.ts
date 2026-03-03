@@ -29,6 +29,7 @@ import type {
 	ValidationTokenMap,
 	WatchValuesCallback,
 } from "./types"
+import { useWatchValueSubscriptions } from "./use-watch-value-subscriptions"
 
 function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStandardSchemaReturn<T> {
 	type FieldKey = DotPaths<T>
@@ -62,6 +63,18 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 	const validationTokensRef = useRef<ValidationTokenMap<string>>({})
 	const validationRunId = useRef(0)
 
+	useEffect(() => {
+		setData(initialValues)
+		setErrors({})
+		setTouched({})
+		setDirty({})
+		validationTokensRef.current = {}
+		validationRunId.current += 1
+		previousDataRef.current = initialValues
+	}, [initialValues])
+
+	useWatchValueSubscriptions(data, watchEntriesRef, previousDataRef)
+
 	const ensureTouched = useCallback((prev: Flags, field: string) => {
 		return prev[field] ? prev : { ...prev, [field]: true }
 	}, [])
@@ -88,45 +101,6 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		},
 		[flatFormDefinition],
 	)
-
-	useEffect(() => {
-		setData(initialValues)
-		setErrors({})
-		setTouched({})
-		setDirty({})
-		validationTokensRef.current = {}
-		validationRunId.current += 1
-		previousDataRef.current = initialValues
-	}, [initialValues])
-
-	useEffect(() => {
-		const prev = previousDataRef.current
-		if (prev === data) return
-
-		previousDataRef.current = data
-		if (watchEntriesRef.current.size === 0) return
-
-		const snapshot = data
-		const entries = [...watchEntriesRef.current]
-		const prevMap = new Map(Object.entries(prev))
-
-		for (const entry of entries) {
-			const { fields } = entry
-			if (fields && fields.length > 0) {
-				const relevantChange = fields.some((field) => (prevMap.get(field) ?? "") !== (snapshot[field] ?? ""))
-				if (!relevantChange) continue
-
-				const selection: FormValues = {}
-				for (const field of fields) {
-					selection[field] = snapshot[field] ?? ""
-				}
-				entry.callback(selection)
-				continue
-			}
-
-			entry.callback(snapshot)
-		}
-	}, [data])
 
 	const validateFieldValue = useCallback(
 		async (field: string, value: string): Promise<string> => {
@@ -256,7 +230,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 	const getForm = useCallback(
 		(onSubmitHandler: (data: TypeFromDefinition<typeof formDefinition>) => void) => {
-			const onSubmit = async (e: SubmitEvent) => {
+			const onSubmit = async (e:SubmitEvent) => {
 				const formEl = e.currentTarget as HTMLFormElement
 				e.preventDefault()
 

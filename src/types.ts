@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec"
-import type { FocusEvent} from "react"
+import type { FocusEvent } from "react"
 
 export type FormValues = {
 	[key: string]: string
