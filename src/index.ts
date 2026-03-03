@@ -1,4 +1,4 @@
-import { type FocusEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { type FocusEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
 	defineForm,
 	deriveThrownMessage,
@@ -18,12 +18,12 @@ import type {
 	FieldData,
 	FieldDefinition,
 	Flags,
-	FormDefinition,
-	FormWatchEntry,
-	FormSnapshot,
-	FormValues,
 	FlatDefaults,
 	FlatFormDefinition,
+	FormDefinition,
+	FormSnapshot,
+	FormValues,
+	FormWatchEntry,
 	TypeFromDefinition,
 	UseStandardSchemaReturn,
 	ValidationTokenMap,
@@ -56,7 +56,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 	const [touched, setTouched] = useState<Flags>({})
 	const [dirty, setDirty] = useState<Flags>({})
 
-	const watchEntriesRef = useRef<FormWatchEntry<string>[]>([])
+	const watchEntriesRef = useRef<Set<FormWatchEntry>>(new Set())
 	const previousDataRef = useRef<FormValues>(initialValues)
 
 	const validationTokensRef = useRef<ValidationTokenMap<string>>({})
@@ -104,7 +104,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		if (prev === data) return
 
 		previousDataRef.current = data
-		if (watchEntriesRef.current.length === 0) return
+		if (watchEntriesRef.current.size === 0) return
 
 		const snapshot = data
 		const entries = [...watchEntriesRef.current]
@@ -113,9 +113,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		for (const entry of entries) {
 			const { fields } = entry
 			if (fields && fields.length > 0) {
-				const relevantChange = fields.some(
-					(field) => (prevMap.get(field) ?? "") !== (snapshot[field] ?? ""),
-				)
+				const relevantChange = fields.some((field) => (prevMap.get(field) ?? "") !== (snapshot[field] ?? ""))
 				if (!relevantChange) continue
 
 				const selection: FormValues = {}
@@ -258,7 +256,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 	const getForm = useCallback(
 		(onSubmitHandler: (data: TypeFromDefinition<typeof formDefinition>) => void) => {
-			const onSubmit = async (e: FormEvent) => {
+			const onSubmit = async (e: SubmitEvent) => {
 				const formEl = e.currentTarget as HTMLFormElement
 				e.preventDefault()
 
@@ -494,9 +492,9 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				},
 			}
 
-			watchEntriesRef.current = [...watchEntriesRef.current, entry]
+			watchEntriesRef.current = new Set([...watchEntriesRef.current, entry])
 			return () => {
-				watchEntriesRef.current = watchEntriesRef.current.filter((existing) => existing !== entry)
+				watchEntriesRef.current = new Set([...watchEntriesRef.current].filter((existing) => existing !== entry))
 			}
 		}) as WatchValuesCallback<T>,
 		[getFieldDefinition],

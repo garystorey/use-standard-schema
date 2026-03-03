@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec"
-import type { FocusEvent, FormEvent } from "react"
+import type { FocusEvent} from "react"
 
 export type FormValues = {
 	[key: string]: string
@@ -177,7 +177,7 @@ export interface FieldData {
 export interface UseStandardSchemaReturn<T extends FormDefinition> {
 	resetForm: () => void
 	getForm: (onSubmitHandler: (data: TypeFromDefinition<T>) => void) => {
-		onSubmit: (e: FormEvent) => Promise<void>
+		onSubmit: (e: SubmitEvent) => Promise<void>
 		onFocus: (e: FocusEvent<HTMLFormElement>) => void
 		onBlur: (e: FocusEvent<HTMLFormElement>) => Promise<void>
 		onReset: () => void

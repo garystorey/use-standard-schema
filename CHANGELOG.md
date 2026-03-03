@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.4
+
+- Refine core form internals and simplify helper logic.
+- Improve `watchValues` subscription behavior and dependency handling.
+- Make `FieldData.defaultValue` optional in typings (runtime still falls back to empty string).
+- Enforce stricter linting for explicit `any` usage and simplify no-`any` checks.
+- Update project dependencies and clean up related tooling.
+
+## 0.4.3
+
+- Fix `TypeFromDefinition` inference so field values map predictably to string form values by default.
+- Resolve missing `ErrorEntry` export issues and align docs with the published API.
+- Rename npm publish script from `publish` to `pub`.
+
+## 0.4.2
+
+- Add `watchValues` subscriptions for observing all fields or targeted field sets.
+- Export `ErrorInfo` from the package root.
+- Harden async validation to avoid stale updates during rapid input/reset flows.
+- Guard imperative APIs like `setField` against unknown field names.
+- Improve fallback validation message handling when validators return blank issue messages.
+- Add the shadcn/ui `Field` example and expand coverage for `toFormData`, unknown-field behavior, and thrown-message handling.
+
 ## 0.4.1
 
 - Broaden React peer dependency support to include React 18.

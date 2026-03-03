@@ -10,6 +10,7 @@
 ## Table of contents
 
 - [Overview](#overview)
+- [What's New in v0.4.4](#whats-new-in-v044)
 - [Installation](#installation)
 - [Usage](#usage)
 - [Examples](#examples)
@@ -31,6 +32,13 @@
 - Built with **TypeScript support**, ensuring type-safe validation and form usage
 - Integrates easily into React workflows
 - Supports **nested objects** with dot notation (e.g. `"address.street1"`)
+
+## What's New in v0.4.4
+
+- Improved `watchValues` subscription reliability and dependency handling.
+- Tightened runtime and typing consistency for field metadata (`FieldData`).
+- Internal refactors for cleaner form state helpers and stricter linting/quality checks.
+- Dependency updates across the toolchain.
 
 ### Prerequisites
 
@@ -164,27 +172,28 @@ Use the `isTouched` and `isDirty` helper methods to check whether or not the for
 
 ### Valid keys
 
-A `FormDefinition`'s key is an intersection between a valid JSON key and an HTML name attribute.
+A `FormDefinition` key must satisfy both valid JSON key rules and valid HTML `name` attribute rules.
 
 ```ts
+import { defineForm } from "use-standard-schema"
+import * as z from "zod"
 
 const formDefinition = defineForm({
-    prefix: z.string(),                // valid
-    "first-name": z.string(),          // valid
-    "middle_name": z.string(),         // valid
-    "last:name": z.string(),           // valid
-    "street address": z.string()       // invalid
+  prefix: { label: "Prefix", validate: z.string() },                // valid
+  "first-name": { label: "First Name", validate: z.string() },      // valid
+  "middle_name": { label: "Middle Name", validate: z.string() },    // valid
+  "last:name": { label: "Last Name", validate: z.string() },        // valid
+  "street address": { label: "Street Address", validate: z.string() } // invalid
 })
-
 ```
 
 ## API
 
-`useStandardSchema` returns a helpers for wiring form elements, reading state, and issuing manual updates.
+`useStandardSchema` returns helpers for wiring form elements, reading state, and issuing manual updates.
 
 ### `useStandardSchema(formDefinition)`
 
-Passing a form definition using `defineForm` and pass the definition to the hook. The return value exposes the rest of the helpers documented below.
+Pass a form definition created with `defineForm` to the hook. The return value exposes the helpers documented below.
 
 ```ts
 const { getForm, getField, getErrors, setField, setError, resetForm, isTouched, isDirty, watchValues } =
@@ -233,7 +242,7 @@ const emailErrors = getErrors("email")
 Clears errors, touched/dirty flags, and restores the original defaults. **Note**: The hook calls this automatically after a successful submit.
 
 ```html
-<button type="reset" onClick={resetForm}>Reset<button>
+<button type="reset" onClick={resetForm}>Reset</button>
 ```
 
 ### `isTouched(name?)` and `isDirty(name?)`
@@ -245,14 +254,14 @@ const hasEditedAnything = isDirty()
 const isEmailTouched = isTouched("email")
 ```
 
-### `watchValues(targets?, callback)`
+### `watchValues(callback)` or `watchValues(targets, callback)`
 
 Subscribe to canonical form values without forcing extra React renders. The callback executes whenever any watched key changes and
 receives an object scoped to those fields.
 
 #### Parameters
 
-- `targets` *(optional)*: a single field name or array of field names. Omit to observe every value in the form.
+- `targets` *(optional)*: a single field name or array of field names. Omit this argument to observe every value in the form.
 - `callback(values)`: invoked with the latest values for the watched fields.
 
 #### Returns
@@ -261,16 +270,23 @@ receives an object scoped to those fields.
 
 ```tsx
 const postToPreview = ({ plan, seats }) => {
-    previewChannel.postMessage({ 
-        quote: calculateQuote(plan, Number(seats)) 
-    })
+  previewChannel.postMessage({
+    quote: calculateQuote(plan, Number(seats))
+  })
 }
 
 useEffect(() => {
-
   const unsubscribe = watchValues(["plan", "seats"], postToPreview)
   return unsubscribe
+}, [watchValues])
+```
 
+```tsx
+useEffect(() => {
+  const unsubscribe = watchValues((values) => {
+    console.log("All values changed:", values)
+  })
+  return unsubscribe
 }, [watchValues])
 ```
 
@@ -307,16 +323,20 @@ If you encounter issues or have feature requests, [open an issue](https://github
 
 ## Changelog
 
+- **v0.4.4**
+  - Improved `watchValues` subscriptions and dependency safety.
+  - Tightened `FieldData` typing while keeping runtime defaults stable.
+  - Refactored internal form helpers and updated dependencies.
 - **v0.4.3**
-  - Fixed documentation issues.
+  - Improved `TypeFromDefinition` inference behavior.
   - Fixed missing `ErrorEntry` export.
 - **v0.4.2**
-  - Added `watchValues` for monitoring value changes without rerender.
+  - Added `watchValues` for monitoring value changes without rerendering.
   - Fixed issue with `ErrorInfo` not being exported.
-  - Field updates are safer, validation errors fall back to helpful defaults, and async checks no longer overwrite newer input.
-  - Added a shadcn/ui Field example
+  - Hardened field updates and async validation race handling.
+  - Added a shadcn/ui Field example.
   - Added additional tests to keep real-world flows covered.
-- **v0.4.1** - Minor code fixes and documentation updates
+- **v0.4.1** - Minor code fixes and documentation updates.
 - **v0.4.0** - Improved form state synchronization, renamed the `FieldDefinitionProps` type to `FieldData`, and ensured programmatic updates stay validated while tracking touched/dirty status.
 - [View the full changelog](./CHANGELOG.md) for earlier releases.
 
