@@ -484,6 +484,42 @@ describe("useStandardSchema getForm handlers (inline)", () => {
 		})
 	})
 
+	it("watchValues does not notify subscribers for no-op value updates", async () => {
+		const { ref } = renderHookHarness()
+
+		const spy = vi.fn()
+		ref.current!.watchValues(spy)
+
+		await act(async () => {
+			await ref.current!.setField("name", "Joe")
+			await ref.current!.setField("name", "Alice")
+		})
+
+		await waitFor(() => {
+			expect(spy).toHaveBeenCalledTimes(1)
+			expect(spy.mock.calls[0][0]["name"]).toBe("Alice")
+		})
+	})
+
+	it("watchValues is not triggered by setError because values do not change", async () => {
+		const { ref } = renderHookHarness()
+
+		const spy = vi.fn()
+		ref.current!.watchValues(spy)
+
+		act(() => {
+			ref.current!.setError("name", "Manual error")
+		})
+
+		await act(async () => {
+			await ref.current!.setField("name", "Alice")
+		})
+
+		await waitFor(() => {
+			expect(spy).toHaveBeenCalledTimes(1)
+			expect(spy.mock.calls[0][0]["name"]).toBe("Alice")
+		})
+	})
 	it("onReset restores defaults and clears flags", async () => {
 		const spy = vi.fn()
 		const { ref } = renderFormHarness({ formDef: makeForm(), onSubmitSpy: spy })
@@ -505,3 +541,5 @@ describe("useStandardSchema getForm handlers (inline)", () => {
 		})
 	})
 })
+
+

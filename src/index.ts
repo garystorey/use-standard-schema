@@ -1,4 +1,4 @@
-import { type FocusEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { type FocusEvent, type SubmitEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
 	defineForm,
 	deriveThrownMessage,
@@ -104,10 +104,8 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 	const validateFieldValue = useCallback(
 		async (field: string, value: string): Promise<string> => {
-			let fieldDef: FieldDefinition
-			try {
-				fieldDef = getFieldDefinition(field)
-			} catch {
+			const fieldDef = flatFormDefinition[field]
+			if (!fieldDef) {
 				return `Field "${String(field)}" not found`
 			}
 
@@ -121,7 +119,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				return deriveThrownMessage(error)
 			}
 		},
-		[getFieldDefinition],
+		[flatFormDefinition],
 	)
 
 	const validateField = useCallback(
@@ -190,7 +188,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				// Check if any errors from removed fields need cleaning
 				if (!changed) {
 					for (const key of Object.keys(prev)) {
-						if (!formDefinitionKeys.includes(key)) {
+						if (!Object.hasOwn(flatFormDefinition, key)) {
 							changed = true
 							break
 						}
@@ -216,7 +214,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 			return isValid
 		},
-		[formDefinitionKeys, data, validateFieldValue],
+		[formDefinitionKeys, flatFormDefinition, data, validateFieldValue],
 	)
 
 	const resetForm = useCallback(() => {
@@ -230,7 +228,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 	const getForm = useCallback(
 		(onSubmitHandler: (data: TypeFromDefinition<typeof formDefinition>) => void) => {
-			const onSubmit = async (e:SubmitEvent) => {
+			const onSubmit = async (e: SubmitEvent<HTMLFormElement>) => {
 				const formEl = e.currentTarget as HTMLFormElement
 				e.preventDefault()
 
@@ -238,7 +236,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				// (e.g., autofill).
 				const submissionEntries = new Map<string, string>()
 				for (const [key, rawValue] of new FormData(formEl).entries()) {
-					if (!submissionEntries.has(key)) {
+					if (Object.hasOwn(flatFormDefinition, key) && !submissionEntries.has(key)) {
 						submissionEntries.set(key, typeof rawValue === "string" ? rawValue : String(rawValue))
 					}
 				}
@@ -287,7 +285,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 			const onFocus = (e: FocusEvent<HTMLFormElement>) => {
 				const field = e.target.name
-				if (!field || !(field in flatFormDefinition)) return
+				if (!field || !Object.hasOwn(flatFormDefinition, field)) return
 
 				setTouched((prev) => ensureTouched(prev, field))
 				setErrors((prev) => (prev[field] === "" ? prev : { ...prev, [field]: "" }))
@@ -295,7 +293,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 			const onBlur = async (e: FocusEvent<HTMLFormElement>) => {
 				const field = e.target.name
-				if (!field || !(field in flatFormDefinition)) return
+				if (!field || !Object.hasOwn(flatFormDefinition, field)) return
 
 				const value = e.target.value
 				const initialValue = initialValueStrings[field] ?? ""
@@ -424,7 +422,11 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				const key = name as string
 				return Boolean(touched[key])
 			}
-			return Object.values(touched).some(Boolean)
+
+			for (const value of Object.values(touched)) {
+				if (value) return true
+			}
+			return false
 		},
 		[touched],
 	)
@@ -435,7 +437,11 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				const key = name as string
 				return Boolean(dirty[key])
 			}
-			return Object.values(dirty).some(Boolean)
+
+			for (const value of Object.values(dirty)) {
+				if (value) return true
+			}
+			return false
 		},
 		[dirty],
 	)
@@ -466,9 +472,9 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				},
 			}
 
-			watchEntriesRef.current = new Set([...watchEntriesRef.current, entry])
+			watchEntriesRef.current.add(entry)
 			return () => {
-				watchEntriesRef.current = new Set([...watchEntriesRef.current].filter((existing) => existing !== entry))
+				watchEntriesRef.current.delete(entry)
 			}
 		}) as WatchValuesCallback<T>,
 		[getFieldDefinition],
@@ -498,3 +504,4 @@ export type {
 	UseStandardSchemaReturn,
 	WatchValuesCallback,
 } from "./types"
+

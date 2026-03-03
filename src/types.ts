@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec"
-import type { FocusEvent } from "react"
+import type { FocusEvent, SubmitEvent } from "react"
 
 export type FormValues = {
 	[key: string]: string
@@ -130,13 +130,17 @@ type WhiteSpaceChar =
 	| "\u3000"
 	| "\uFEFF"
 
+type _IsDangerousSegment<S extends string> = S extends "__proto__" | "constructor" | "prototype" ? true : false
+
 type _IsValidSegment<S extends string> = S extends ""
 	? false
 	: S extends `${string}${WhiteSpaceChar}${string}`
 		? false
 		: S extends `${string}.${string}`
 			? false
-			: true
+			: _IsDangerousSegment<S> extends true
+				? false
+				: true
 
 export type FormPathKey<S extends string> = S extends `${infer Head}.${infer Tail}`
 	? _IsValidSegment<Head> extends true
@@ -177,7 +181,7 @@ export interface FieldData {
 export interface UseStandardSchemaReturn<T extends FormDefinition> {
 	resetForm: () => void
 	getForm: (onSubmitHandler: (data: TypeFromDefinition<T>) => void) => {
-		onSubmit: (e: SubmitEvent) => Promise<void>
+		onSubmit: (e: SubmitEvent<HTMLFormElement>) => Promise<void>
 		onFocus: (e: FocusEvent<HTMLFormElement>) => void
 		onBlur: (e: FocusEvent<HTMLFormElement>) => Promise<void>
 		onReset: () => void
@@ -190,3 +194,4 @@ export interface UseStandardSchemaReturn<T extends FormDefinition> {
 	isDirty: (name?: DotPaths<T>) => boolean
 	watchValues: WatchValuesCallback<T>
 }
+

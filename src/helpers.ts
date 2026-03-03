@@ -9,10 +9,32 @@ import type {
 	StandardValidator,
 } from "./types"
 
+const DISALLOWED_PATH_SEGMENTS = new Set(["__proto__", "constructor", "prototype"])
+
 export function defineForm<T extends FormDefinition>(
 	formDefinition: AssertValidFormKeysDeep<T>,
 ): AssertValidFormKeysDeep<T> {
+	assertSafeFormKeys(formDefinition)
 	return formDefinition
+}
+
+function assertSafePathKey(key: string, fullPath: string): void {
+	for (const segment of key.split(".")) {
+		if (DISALLOWED_PATH_SEGMENTS.has(segment)) {
+			throw new Error(`Unsafe form key segment "${segment}" at "${fullPath}"`)
+		}
+	}
+}
+
+function assertSafeFormKeys(formDefinition: FormDefinition, parentPath = ""): void {
+	for (const [propertyKey, propertyValue] of Object.entries(formDefinition)) {
+		const fullPath = parentPath ? `${parentPath}.${propertyKey}` : propertyKey
+		assertSafePathKey(propertyKey, fullPath)
+
+		if (isPlainObject(propertyValue) && !isFieldDefinition(propertyValue)) {
+			assertSafeFormKeys(propertyValue as FormDefinition, fullPath)
+		}
+	}
 }
 
 function isPlainObject(value: unknown): value is { [key: string]: unknown } {
@@ -24,7 +46,7 @@ function isPlainObject(value: unknown): value is { [key: string]: unknown } {
 }
 
 export function isFieldDefinition(obj: unknown): obj is FieldDefinition {
-	return typeof obj === "object" && obj !== null && "label" in obj && "validate" in obj
+	return typeof obj === "object" && obj !== null && Object.hasOwn(obj as object, "label") && Object.hasOwn(obj as object, "validate")
 }
 
 export function toFormData(data: FormValues): FormData
@@ -52,7 +74,7 @@ export function flattenFormDefinition(
 	formDefinition: FormDefinition,
 	parentPath = "",
 ): FlatFormDefinition {
-	const flattened = {} as FlatFormDefinition
+	const flattened = Object.create(null) as FlatFormDefinition
 
 	for (const [propertyKey, propertyValue] of Object.entries(formDefinition)) {
 		const fullPath = parentPath ? `${parentPath}.${propertyKey}` : propertyKey
@@ -161,7 +183,7 @@ export function flattenDefaults<Def extends FormDefinition>(
 export function flattenDefaults(formDefinition: FormDefinition, parentPath?: string): FlatDefaults
 
 export function flattenDefaults(formDefinition: FormDefinition, parentPath = ""): FlatDefaults {
-	const flattened = {} as FlatDefaults
+	const flattened = Object.create(null) as FlatDefaults
 
 	for (const [propertyKey, propertyValue] of Object.entries(formDefinition)) {
 		const fullPath = parentPath ? `${parentPath}.${propertyKey}` : propertyKey
@@ -178,3 +200,4 @@ export function flattenDefaults(formDefinition: FormDefinition, parentPath = "")
 
 	return flattened
 }
+

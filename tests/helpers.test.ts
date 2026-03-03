@@ -41,12 +41,14 @@ describe("helpers", () => {
 
 	it("flattenFormDefinition returns dot-path FieldDefinition map", () => {
 		const flat = flattenFormDefinition(form)
+		expect(Object.getPrototypeOf(flat)).toBeNull()
 		expect(Object.keys(flat).sort()).toEqual(["a", "group.b", "group.c"])
 		expect(flat["a"].label).toBe("A")
 	})
 
 	it("flattenDefaults returns dot-path defaults (empty string if missing)", () => {
 		const defs = flattenDefaults(form)
+		expect(Object.getPrototypeOf(defs)).toBeNull()
 		expect(defs).toEqual({
 			a: "1",
 			"group.b": "",
@@ -58,6 +60,20 @@ describe("helpers", () => {
 		expect(isFieldDefinition({ label: "X", validate: noopString() })).toBe(true)
 		expect(isFieldDefinition({ label: "X" })).toBe(false)
 		expect(isFieldDefinition(null)).toBe(false)
+	})
+
+	it("isFieldDefinition ignores prototype-inherited keys", () => {
+		const proto = { label: "X", validate: noopString() }
+		const inherited = Object.create(proto)
+		expect(isFieldDefinition(inherited)).toBe(false)
+	})
+
+	it("defineForm rejects dangerous key segments at runtime", () => {
+		const unsafe = {
+			["__proto__"]: { label: "Nope", validate: noopString() },
+		} as unknown as Parameters<typeof defineForm>[0]
+
+		expect(() => defineForm(unsafe)).toThrowError('Unsafe form key segment "__proto__"')
 	})
 
 	it("toFormData stringifies defined values and excludes nullish entries", () => {
