@@ -86,6 +86,53 @@ export type FormWatchEntry<K extends string = string> = {
 }
 
 export type ValidationTokenMap<K extends string = string> = Partial<Record<K, number>>
+export type CompiledFormModel<Def extends FormDefinition = FormDefinition> = {
+	fieldKeys: Array<DotPaths<Def>>
+	fieldDefs: FlatFormDefinition<Def>
+	initialValues: FlatDefaults<Def>
+	validators: Record<string, StandardValidator | undefined>
+}
+
+export type DomInteraction = "mark" | "clear"
+
+export interface FormState {
+	values: FormValues
+	errors: Errors
+	touched: Flags
+	dirty: Flags
+	domInteracted: Flags
+}
+
+export type FormAction =
+	| { type: "reset"; values: FormValues }
+	| { type: "focusField"; field: string }
+	| { type: "commitFieldValue"; field: string; value: string; initialValue: string; domInteraction: DomInteraction }
+	| { type: "mergeResolvedSubmissionValues"; values: FormValues }
+	| { type: "setFieldError"; field: string; message: string | null }
+	| { type: "setAllErrors"; errors: Errors }
+
+export type FieldValidationResult = {
+	stale: boolean
+	message: string
+}
+
+export type FormValidationResult = {
+	stale: boolean
+	isValid: boolean
+	errors: Errors
+	tokensForRun: ValidationTokenMap<string>
+}
+
+export interface ValidationRuntime {
+	invalidateAll: () => void
+	validateField: (field: string, value: string) => Promise<FieldValidationResult>
+	validateForm: (values: FormValues) => Promise<FormValidationResult>
+	buildErrorsFromBatch: (
+		previousErrors: Errors,
+		batchErrors: Errors,
+		tokensForRun: ValidationTokenMap<string>,
+	) => Errors
+}
 
 export type ErrorEntry = { name: string; error: string; label: string }
 
@@ -189,3 +236,4 @@ export interface UseStandardSchemaReturn<T extends FormDefinition> {
 	isDirty: (name?: DotPaths<T>) => boolean
 	watchValues: WatchValuesCallback<T>
 }
+

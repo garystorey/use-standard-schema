@@ -1,15 +1,11 @@
-import { type FocusEvent, type SubmitEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { type FocusEvent, type SubmitEvent, useCallback, useEffect, useMemo, useReducer, useRef } from "react"
+import { compileFormModel } from "./form-model"
+import { createFormState, formReducer } from "./form-reducer"
 import {
 	defineForm,
-	deriveThrownMessage,
-	deriveValidationMessage,
 	ensureTouched,
-	extractValidator,
-	flattenDefaults,
-	flattenFormDefinition,
 	isFlagSet,
 	resolveManualErrorMessage,
-	setTouchedAndDirty,
 	toFormData,
 	toInputString,
 } from "./helpers"
@@ -17,124 +13,77 @@ import type {
 	DotPaths,
 	ErrorEntry,
 	ErrorInfo,
-	Errors,
 	FieldData,
 	FieldDefinition,
 	Flags,
-	FlatDefaults,
-	FlatFormDefinition,
 	FormDefinition,
 	FormSnapshot,
 	FormValues,
 	FormWatchEntry,
 	TypeFromDefinition,
 	UseStandardSchemaReturn,
-	ValidationTokenMap,
 	WatchValuesCallback,
 } from "./types"
 import { useWatchValueSubscriptions } from "./use-watch-value-subscriptions"
+import { createValidationRuntime } from "./validation-runtime"
 
 function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStandardSchemaReturn<T> {
 	type FieldKey = DotPaths<T>
 
-	const flatFormDefinition = useMemo(
-		() => flattenFormDefinition(formDefinition) as FlatFormDefinition<T>,
-		[formDefinition],
-	)
+	const model = useMemo(() => compileFormModel(formDefinition), [formDefinition])
 
-	const initialValues = useMemo<FlatDefaults<T>>(() => flattenDefaults(formDefinition), [formDefinition])
+	const [state, dispatch] = useReducer(formReducer, model.initialValues as FormValues, createFormState)
 
-	// Cache initial string representations for comparison
+	const stateRef = useRef(state)
+	const watchEntriesRef = useRef<Set<FormWatchEntry>>(new Set())
+	const previousDataRef = useRef<FormValues>(model.initialValues)
+	const domInteractedRef = useRef<Flags>({})
+
 	const initialValueStrings = useMemo(() => {
 		const entries: FormValues = {}
-		for (const [key, value] of Object.entries(initialValues)) {
+		for (const [key, value] of Object.entries(model.initialValues)) {
 			entries[key] = toInputString(value)
 		}
 		return entries
-	}, [initialValues])
+	}, [model.initialValues])
 
-	const formDefinitionKeys = useMemo(() => Object.keys(flatFormDefinition), [flatFormDefinition])
-
-	const [data, setData] = useState<FormValues>(initialValues)
-	const [errors, setErrors] = useState<Errors>({})
-	const [touched, setTouched] = useState<Flags>({})
-	const [dirty, setDirty] = useState<Flags>({})
-
-	const watchEntriesRef = useRef<Set<FormWatchEntry>>(new Set())
-	const previousDataRef = useRef<FormValues>(initialValues)
-	const domInteractedRef = useRef<Flags>({})
-
-	const validationTokensRef = useRef<ValidationTokenMap<string>>({})
-	const validationRunId = useRef(0)
-
-	const resetState = useCallback((nextValues: FormValues, syncPreviousData = false) => {
-		setData(nextValues)
-		setErrors({})
-		setTouched({})
-		setDirty({})
-		domInteractedRef.current = {}
-		validationTokensRef.current = {}
-		validationRunId.current += 1
-
-		if (syncPreviousData) {
-			previousDataRef.current = nextValues
-		}
-	}, [])
+	const validationRuntime = useMemo(
+		() => createValidationRuntime(model.fieldKeys as string[], model.validators),
+		[model.fieldKeys, model.validators],
+	)
 
 	useEffect(() => {
-		resetState(initialValues, true)
-	}, [initialValues, resetState])
+		stateRef.current = state
+	}, [state])
 
-	useWatchValueSubscriptions(data, watchEntriesRef, previousDataRef)
+	const resetState = useCallback(
+		(nextValues: FormValues, syncPreviousData = false) => {
+			dispatch({ type: "reset", values: nextValues })
+			domInteractedRef.current = {}
+			validationRuntime.invalidateAll()
+
+			if (syncPreviousData) {
+				previousDataRef.current = nextValues
+			}
+		},
+		[validationRuntime],
+	)
+
+	useEffect(() => {
+		resetState(model.initialValues, true)
+	}, [model.initialValues, resetState])
+
+	useWatchValueSubscriptions(state.values, watchEntriesRef, previousDataRef)
 
 	const getFieldDefinition = useCallback(
 		(field: string): FieldDefinition => {
-			const def = flatFormDefinition[field]
+			const def = model.fieldDefs[field]
 			if (!def) {
 				throw new Error(`Field "${field}" not found`)
 			}
 			return def
 		},
-		[flatFormDefinition],
-	)
-
-	const validateFieldValue = useCallback(
-		async (field: string, value: string): Promise<string> => {
-			const fieldDef = flatFormDefinition[field]
-			if (!fieldDef) {
-				return `Field "${String(field)}" not found`
-			}
-
-			const validator = extractValidator(fieldDef.validate)
-			if (!validator) return "Validator not available"
-
-			try {
-				const result = await validator(value)
-				return deriveValidationMessage(result)
-			} catch (error) {
-				return deriveThrownMessage(error)
-			}
-		},
-		[flatFormDefinition],
-	)
-
-	const validateField = useCallback(
-		async (field: string, value: string) => {
-			const runId = validationRunId.current
-			const token = (validationTokensRef.current[field] ?? 0) + 1
-			validationTokensRef.current[field] = token
-
-			const message = await validateFieldValue(field, value)
-
-			// Race condition check: ensure form hasn't been reset or field re-validated since
-			if (validationRunId.current !== runId || validationTokensRef.current[field] !== token) {
-				return false
-			}
-
-			setErrors((prev) => (prev[field] === message ? prev : { ...prev, [field]: message }))
-			return message === ""
-		},
-		[validateFieldValue],
+		[model.fieldDefs],
 	)
 
 	const markDomInteracted = useCallback((field: string) => {
@@ -149,10 +98,22 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		domInteractedRef.current = nextInteracted
 	}, [])
 
+	const validateField = useCallback(
+		async (field: string, value: string) => {
+			const result = await validationRuntime.validateField(field, value)
+			if (result.stale) {
+				return false
+			}
+
+			dispatch({ type: "setFieldError", field, message: result.message })
+			return result.message === ""
+		},
+		[validationRuntime],
+	)
+
 	const commitFieldValue = useCallback(
 		async (field: string, value: string, domInteraction: "mark" | "clear") => {
 			const initialValue = initialValueStrings[field] ?? ""
-			const isDirty = value !== initialValue
 
 			if (domInteraction === "mark") {
 				markDomInteracted(field)
@@ -160,8 +121,13 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				clearDomInteracted(field)
 			}
 
-			setTouchedAndDirty(field, isDirty, setTouched, setDirty)
-			setData((prev) => (prev[field] === value ? prev : { ...prev, [field]: value }))
+			dispatch({
+				type: "commitFieldValue",
+				field,
+				value,
+				initialValue,
+				domInteraction,
+			})
 
 			await validateField(field, value).catch(console.error)
 		},
@@ -170,87 +136,29 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 	const validateForm = useCallback(
 		async (values?: FormValues) => {
-			const sourceValues = values ?? data
-			const runId = validationRunId.current
-			const newErrors: Errors = {}
-			const tokensForRun: ValidationTokenMap<string> = {}
-
-			// Execute all validators in parallel
-			await Promise.all(
-				formDefinitionKeys.map(async (key) => {
-					const token = (validationTokensRef.current[key] ?? 0) + 1
-					validationTokensRef.current[key] = token
-					tokensForRun[key] = token
-					newErrors[key] = await validateFieldValue(key, sourceValues[key] ?? "")
-				}),
-			)
-
-			// Ensure the form wasn't reset during validation
-			if (validationRunId.current !== runId) {
+			const sourceValues = values ?? stateRef.current.values
+			const result = await validationRuntime.validateForm(sourceValues)
+			if (result.stale) {
 				return false
 			}
 
-			setErrors((prev) => {
-				if (validationRunId.current !== runId) return prev
+			const nextErrors = validationRuntime.buildErrorsFromBatch(
+				stateRef.current.errors,
+				result.errors,
+				result.tokensForRun,
+			)
+			dispatch({ type: "setAllErrors", errors: nextErrors })
 
-				let changed = false
-				const next: Errors = {}
-
-				for (const key of formDefinitionKeys) {
-					const prevValue = prev[key] ?? ""
-
-					// If a newer validation started for this specific field during the batch run, ignore the batch result
-					if (validationTokensRef.current[key] !== tokensForRun[key]) {
-						next[key] = prevValue
-						continue
-					}
-
-					const message = newErrors[key] ?? ""
-					next[key] = message
-					if (prevValue !== message) {
-						changed = true
-					}
-				}
-
-				// Check if any errors from removed fields need cleaning
-				if (!changed) {
-					for (const key of Object.keys(prev)) {
-						if (!Object.hasOwn(flatFormDefinition, key)) {
-							changed = true
-							break
-						}
-					}
-					if (!changed) return prev
-				}
-
-				return next
-			})
-
-			let isValid = true
-			for (const key of formDefinitionKeys) {
-				// If a newer validation runs, we cannot guarantee validity of the whole form
-				if (validationTokensRef.current[key] !== tokensForRun[key]) {
-					isValid = false
-					continue
-				}
-
-				if (newErrors[key] !== "") {
-					isValid = false
-				}
-			}
-
-			return isValid
+			return result.isValid
 		},
-		[formDefinitionKeys, flatFormDefinition, data, validateFieldValue],
+		[validationRuntime],
 	)
 
 	const resolveSubmissionValues = useCallback(
 		(formEl: HTMLFormElement, stateValues: FormValues): FormValues => {
-			// Use FormData to capture values that might not have triggered React onChange/onBlur yet
-			// (e.g., autofill).
 			const submissionEntries = new Map<string, string>()
 			for (const [key, rawValue] of new FormData(formEl).entries()) {
-				if (Object.hasOwn(flatFormDefinition, key) && !submissionEntries.has(key)) {
+				if (Object.hasOwn(model.fieldDefs, key) && !submissionEntries.has(key)) {
 					submissionEntries.set(key, typeof rawValue === "string" ? rawValue : String(rawValue))
 				}
 			}
@@ -258,15 +166,14 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 			const updates: FormValues = {}
 			let hasChanges = false
 
-			for (const key of formDefinitionKeys) {
-				const stateValue = stateValues[key]
+			for (const key of model.fieldKeys) {
+				const stateValue = stateValues[key] ?? ""
 				const stateString = toInputString(stateValue)
 				const initialString = initialValueStrings[key] ?? ""
 				const submissionValue = submissionEntries.get(key)
 				let resolvedValue = stateValue
 
 				if (submissionValue !== undefined) {
-					// Preserve programmatic state only if the field has not seen DOM interaction.
 					const shouldPreferState =
 						stateString !== initialString &&
 						submissionValue === initialString &&
@@ -285,12 +192,12 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 			return hasChanges ? { ...stateValues, ...updates } : stateValues
 		},
-		[flatFormDefinition, formDefinitionKeys, initialValueStrings],
+		[model.fieldDefs, model.fieldKeys, initialValueStrings],
 	)
 
 	const resetForm = useCallback(() => {
-		resetState(initialValues)
-	}, [initialValues, resetState])
+		resetState(model.initialValues)
+	}, [model.initialValues, resetState])
 
 	const getForm = useCallback(
 		(onSubmitHandler: (data: TypeFromDefinition<typeof formDefinition>) => void) => {
@@ -298,9 +205,10 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				const formEl = e.currentTarget as HTMLFormElement
 				e.preventDefault()
 
-				const finalValues = resolveSubmissionValues(formEl, data)
-				if (!Object.is(finalValues, data)) {
-					setData(finalValues)
+				const currentValues = stateRef.current.values
+				const finalValues = resolveSubmissionValues(formEl, currentValues)
+				if (!Object.is(finalValues, currentValues)) {
+					dispatch({ type: "mergeResolvedSubmissionValues", values: finalValues })
 				}
 
 				const isValid = await validateForm(finalValues)
@@ -313,16 +221,15 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 			const onFocus = (e: FocusEvent<HTMLFormElement>) => {
 				const field = e.target.name
-				if (!field || !Object.hasOwn(flatFormDefinition, field)) return
+				if (!field || !Object.hasOwn(model.fieldDefs, field)) return
 
 				markDomInteracted(field)
-				setTouched((prev) => ensureTouched(prev, field))
-				setErrors((prev) => (prev[field] === "" ? prev : { ...prev, [field]: "" }))
+				dispatch({ type: "focusField", field })
 			}
 
 			const onBlur = async (e: FocusEvent<HTMLFormElement>) => {
 				const field = e.target.name
-				if (!field || !Object.hasOwn(flatFormDefinition, field)) return
+				if (!field || !Object.hasOwn(model.fieldDefs, field)) return
 
 				await commitFieldValue(field, e.target.value, "mark")
 			}
@@ -331,15 +238,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 			return { onSubmit, onFocus, onBlur, onReset }
 		},
-		[
-			flatFormDefinition,
-			data,
-			commitFieldValue,
-			markDomInteracted,
-			resetForm,
-			resolveSubmissionValues,
-			validateForm,
-		],
+		[commitFieldValue, markDomInteracted, model.fieldDefs, resetForm, resolveSubmissionValues, validateForm],
 	)
 
 	const getField = useCallback(
@@ -354,15 +253,15 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 			return {
 				...fieldDef,
 				name: key,
-				defaultValue: data[key] ?? "",
-				error: errors[key] ?? "",
-				touched: touched[key] ?? false,
-				dirty: dirty[key] ?? false,
+				defaultValue: state.values[key] ?? "",
+				error: state.errors[key] ?? "",
+				touched: state.touched[key] ?? false,
+				dirty: state.dirty[key] ?? false,
 				describedById,
 				errorId,
 			}
 		},
-		[data, errors, touched, dirty, getFieldDefinition],
+		[getFieldDefinition, state.dirty, state.errors, state.touched, state.values],
 	)
 
 	const setField = useCallback(
@@ -380,17 +279,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 			getFieldDefinition(field)
 
 			const message = resolveManualErrorMessage(info)
-
-			setErrors((prev) => {
-				const current = prev[field]
-				if (message == null) {
-					if (current === undefined) return prev
-					const next = { ...prev }
-					delete next[field]
-					return next
-				}
-				return current === message ? prev : { ...prev, [field]: message }
-			})
+			dispatch({ type: "setFieldError", field, message })
 		},
 		[getFieldDefinition],
 	)
@@ -400,7 +289,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 			if (name) {
 				const key = name as string
 				const def = getFieldDefinition(key)
-				const error = errors[key]
+				const error = state.errors[key]
 				if (!error) return []
 				return [
 					{
@@ -412,8 +301,8 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 			}
 
 			const errorEntries: ErrorEntry[] = []
-			for (const key of formDefinitionKeys) {
-				const error = errors[key]
+			for (const key of model.fieldKeys) {
+				const error = state.errors[key]
 				if (error) {
 					const def = getFieldDefinition(key)
 					errorEntries.push({
@@ -425,12 +314,12 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 			}
 			return errorEntries
 		},
-		[formDefinitionKeys, errors, getFieldDefinition],
+		[getFieldDefinition, model.fieldKeys, state.errors],
 	)
 
-	const isTouched = useCallback((name?: FieldKey) => isFlagSet(touched, name as string | undefined), [touched])
+	const isTouched = useCallback((name?: FieldKey) => isFlagSet(state.touched, name as string | undefined), [state.touched])
 
-	const isDirty = useCallback((name?: FieldKey) => isFlagSet(dirty, name as string | undefined), [dirty])
+	const isDirty = useCallback((name?: FieldKey) => isFlagSet(state.dirty, name as string | undefined), [state.dirty])
 
 	const watchValues = useCallback(
 		((

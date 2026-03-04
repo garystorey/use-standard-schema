@@ -1,3 +1,4 @@
+import { compileFormModel } from "./form-model"
 import type {
 	AssertValidFormKeysDeep,
 	ErrorInfo,
@@ -18,7 +19,6 @@ export function defineForm<T extends FormDefinition>(
 	assertValidFormDefinition(formDefinition)
 	return formDefinition
 }
-
 
 function assertValidFormDefinition(formDefinition: unknown, parentPath = ""): void {
 	if (!isPlainObject(formDefinition)) {
@@ -107,22 +107,7 @@ export function flattenFormDefinition(
 	formDefinition: FormDefinition,
 	parentPath = "",
 ): FlatFormDefinition {
-	const flattened = Object.create(null) as FlatFormDefinition
-
-	for (const [propertyKey, propertyValue] of Object.entries(formDefinition)) {
-		const fullPath = parentPath ? `${parentPath}.${propertyKey}` : propertyKey
-
-		if (isFieldDefinition(propertyValue)) {
-			flattened[fullPath] = propertyValue
-			continue
-		}
-
-		if (isPlainObject(propertyValue)) {
-			Object.assign(flattened, flattenFormDefinition(propertyValue as FormDefinition, fullPath))
-		}
-	}
-
-	return flattened
+	return compileFormModel(formDefinition, parentPath).fieldDefs
 }
 
 function isValidatorFunction(value: unknown): value is StandardValidator {
@@ -255,21 +240,5 @@ export function flattenDefaults<Def extends FormDefinition>(
 export function flattenDefaults(formDefinition: FormDefinition, parentPath?: string): FlatDefaults
 
 export function flattenDefaults(formDefinition: FormDefinition, parentPath = ""): FlatDefaults {
-	const flattened = Object.create(null) as FlatDefaults
-
-	for (const [propertyKey, propertyValue] of Object.entries(formDefinition)) {
-		const fullPath = parentPath ? `${parentPath}.${propertyKey}` : propertyKey
-
-		if (isFieldDefinition(propertyValue)) {
-			flattened[fullPath] = propertyValue.defaultValue ?? ""
-			continue
-		}
-
-		if (isPlainObject(propertyValue)) {
-			Object.assign(flattened, flattenDefaults(propertyValue as FormDefinition, fullPath))
-		}
-	}
-
-	return flattened
+	return compileFormModel(formDefinition, parentPath).initialValues
 }
-

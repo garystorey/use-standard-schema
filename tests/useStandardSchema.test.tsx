@@ -246,6 +246,38 @@ describe("useStandardSchema (basic)", () => {
 		})
 	})
 
+	it("resetForm invalidates in-flight validation updates", async () => {
+		const asyncForm = defineForm({
+			name: { label: "Name", defaultValue: "Joe", validate: delayed("Async required", 30) },
+		})
+
+		type AsyncForm = typeof asyncForm
+
+		const HookHarness = forwardRef<UseStandardSchemaReturn<AsyncForm> | null, { formDef: AsyncForm }>(
+			function HookHarness(props, ref) {
+				const api = useStandardSchema(props.formDef)
+				useImperativeHandle(ref, () => api, [api])
+				return null
+			},
+		)
+
+		const ref = React.createRef<UseStandardSchemaReturn<AsyncForm> | null>()
+		render(<HookHarness ref={ref} formDef={asyncForm} />)
+
+		await act(async () => {
+			const pending = ref.current!.setField("name", "")
+			ref.current!.resetForm()
+			await pending
+		})
+
+		await waitFor(() => {
+			const field = ref.current!.getField("name")
+			expect(field.defaultValue).toBe("Joe")
+			expect(field.error).toBe("")
+			expect(ref.current!.isDirty()).toBe(false)
+			expect(ref.current!.isTouched()).toBe(false)
+		})
+	})
 	it("handles validators that throw errors without crashing", async () => {
 		const { ref } = renderHookHarness(makeThrowingForm())
 
@@ -362,6 +394,61 @@ describe("useStandardSchema getForm handlers (inline)", () => {
 		expect(calledWith["name"]).toBe("Joe")
 	})
 
+	it("submit validation ignores stale batch results after newer field validation", async () => {
+		const spy = vi.fn()
+		const asyncForm = defineForm({
+			name: { label: "Name", defaultValue: "Joe", validate: delayed("Async required", 30) },
+		})
+
+		type AsyncForm = typeof asyncForm
+
+		const FormHarness = forwardRef<
+			UseStandardSchemaReturn<AsyncForm> | null,
+			{ formDef: AsyncForm; onSubmitSpy: (data: Record<string, unknown>) => void }
+		>(function FormHarness(props, ref) {
+			const api = useStandardSchema(props.formDef)
+			const handlers = api.getForm((values) => props.onSubmitSpy(values as Record<string, unknown>))
+
+			useImperativeHandle(ref, () => api, [api])
+
+			const nameField = api.getField("name")
+
+			return (
+				<form
+					data-testid="async-form"
+					onSubmit={handlers.onSubmit}
+					onFocus={handlers.onFocus}
+					onBlur={handlers.onBlur}
+					onReset={handlers.onReset}
+				>
+					<label htmlFor="async-name">{nameField.label}</label>
+					<input id="async-name" name="name" defaultValue={nameField.defaultValue} />
+					<button type="submit">Submit</button>
+				</form>
+			)
+		})
+
+		const ref = React.createRef<UseStandardSchemaReturn<AsyncForm> | null>()
+		render(<FormHarness ref={ref} formDef={asyncForm} onSubmitSpy={spy} />)
+
+		const user = userEvent.setup()
+		const nameInput = screen.getByLabelText("Name") as HTMLInputElement
+		await user.clear(nameInput)
+
+		const formEl = screen.getByTestId("async-form") as HTMLFormElement
+		fireEvent.submit(formEl)
+
+		await act(async () => {
+			await ref.current!.setField("name", "Grace")
+		})
+
+		await waitFor(() => {
+			const field = ref.current!.getField("name")
+			expect(field.defaultValue).toBe("Grace")
+			expect(field.error).toBe("")
+			expect(spy).not.toHaveBeenCalled()
+		})
+	})
 	it("onFocus sets touched and clears error", async () => {
 		const spy = vi.fn()
 		const { ref } = renderFormHarness({ formDef: makeForm(), onSubmitSpy: spy })
@@ -565,3 +652,4 @@ describe("useStandardSchema getForm handlers (inline)", () => {
 		})
 	})
 })
+
