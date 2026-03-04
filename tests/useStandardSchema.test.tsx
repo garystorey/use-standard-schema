@@ -338,6 +338,30 @@ describe("useStandardSchema getForm handlers (inline)", () => {
 		expect(calledWith["contact.email"]).toBe("sally@example.com")
 	})
 
+	it("onSubmit prefers interacted DOM values even when they match defaults", async () => {
+		const spy = vi.fn()
+		const { ref } = renderFormHarness({ formDef: makeForm(), onSubmitSpy: spy })
+
+		await act(async () => {
+			await ref.current!.setField("name", "Sally")
+			await ref.current!.setField("contact.email", "sally@example.com")
+		})
+
+		const user = userEvent.setup()
+		const nameInput = screen.getByLabelText("Name") as HTMLInputElement
+
+		await user.click(nameInput)
+		await user.clear(nameInput)
+		await user.type(nameInput, "Joe")
+
+		const formEl = screen.getByTestId("form") as HTMLFormElement
+		fireEvent.submit(formEl)
+
+		await waitFor(() => expect(spy).toHaveBeenCalled())
+		const calledWith = spy.mock.calls[0][0]
+		expect(calledWith["name"]).toBe("Joe")
+	})
+
 	it("onFocus sets touched and clears error", async () => {
 		const spy = vi.fn()
 		const { ref } = renderFormHarness({ formDef: makeForm(), onSubmitSpy: spy })
@@ -541,5 +565,3 @@ describe("useStandardSchema getForm handlers (inline)", () => {
 		})
 	})
 })
-
-

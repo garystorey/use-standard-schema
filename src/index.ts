@@ -42,7 +42,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		[formDefinition],
 	)
 
-    const initialValues = useMemo<FlatDefaults<T>>(() => flattenDefaults(formDefinition),[formDefinition],)
+	const initialValues = useMemo<FlatDefaults<T>>(() => flattenDefaults(formDefinition), [formDefinition])
 
 
 	// Cache initial string representations for comparison
@@ -63,6 +63,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 	const watchEntriesRef = useRef<Set<FormWatchEntry>>(new Set())
 	const previousDataRef = useRef<FormValues>(initialValues)
+	const domInteractedRef = useRef<Flags>({})
 
 	const validationTokensRef = useRef<ValidationTokenMap<string>>({})
 	const validationRunId = useRef(0)
@@ -72,6 +73,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		setErrors({})
 		setTouched({})
 		setDirty({})
+		domInteractedRef.current = {}
 		validationTokensRef.current = {}
 		validationRunId.current += 1
 		previousDataRef.current = initialValues
@@ -209,6 +211,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		setErrors({})
 		setTouched({})
 		setDirty({})
+		domInteractedRef.current = {}
 		validationTokensRef.current = {}
 		validationRunId.current += 1
 	}, [initialValues])
@@ -240,10 +243,11 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 					let resolvedValue = stateValue
 
 					if (submissionValue !== undefined) {
-						// Heuristic: If state differs from default, but submission matches default,
-						// it usually means the user reverted the field in the DOM.
-						// However, if the DOM value matches state, we trust state.
-						const shouldPreferState = stateString !== initialString && submissionValue === initialString
+						// Preserve programmatic state only if the field has not seen DOM interaction.
+						const shouldPreferState =
+							stateString !== initialString &&
+							submissionValue === initialString &&
+							!domInteractedRef.current[key]
 
 						if (!shouldPreferState) {
 							resolvedValue = submissionValue
@@ -274,6 +278,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				const field = e.target.name
 				if (!field || !Object.hasOwn(flatFormDefinition, field)) return
 
+				domInteractedRef.current = ensureTouched(domInteractedRef.current, field)
 				setTouched((prev) => ensureTouched(prev, field))
 				setErrors((prev) => (prev[field] === "" ? prev : { ...prev, [field]: "" }))
 			}
@@ -286,6 +291,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				const initialValue = initialValueStrings[field] ?? ""
 				const isDirty = value !== initialValue
 
+				domInteractedRef.current = ensureTouched(domInteractedRef.current, field)
 				setTouchedAndDirty(field, isDirty, setTouched, setDirty)
 				setData((prev) => (prev[field] === value ? prev : { ...prev, [field]: value }))
 
@@ -336,6 +342,12 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 			getFieldDefinition(field)
 			const initialValue = initialValueStrings[field] ?? ""
 			const isDirty = value !== initialValue
+
+			if (domInteractedRef.current[field]) {
+				const nextInteracted = { ...domInteractedRef.current }
+				delete nextInteracted[field]
+				domInteractedRef.current = nextInteracted
+			}
 
 			setData((prev) => (prev[field] === value ? prev : { ...prev, [field]: value }))
 			setTouchedAndDirty(field, isDirty, setTouched, setDirty)
@@ -461,4 +473,3 @@ export type {
 	UseStandardSchemaReturn,
 	WatchValuesCallback,
 } from "./types"
-

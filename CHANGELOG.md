@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Make `FieldData.defaultValue` optional in typings (runtime still falls back to empty string).
 - Enforce stricter linting for explicit `any` usage and simplify no-`any` checks.
 - Update project dependencies and clean up related tooling.
+- Fix submit reconciliation so interacted DOM values are honored even when they match initial defaults after programmatic updates.
 
 ## 0.4.3
 
