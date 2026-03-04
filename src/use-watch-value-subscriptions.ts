@@ -1,5 +1,5 @@
-import { useEffect } from "react"
 import type { RefObject } from "react"
+import { useEffect } from "react"
 import type { FormValues, FormWatchEntry } from "./types"
 
 function hasRelevantChange(fields: readonly string[], previous: FormValues, current: FormValues): boolean {

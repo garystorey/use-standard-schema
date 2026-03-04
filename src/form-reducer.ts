@@ -1,5 +1,5 @@
 import { ensureTouched, updateDirtyFlags } from "./helpers"
-import type { Errors, Flags, FormAction, FormState, FormValues } from "./types"
+import type { Flags, FormAction, FormState, FormValues } from "./types"
 
 export function createFormState(values: FormValues): FormState {
 	return {
