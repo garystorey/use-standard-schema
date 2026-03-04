@@ -3,10 +3,13 @@ import {
 	defineForm,
 	deriveThrownMessage,
 	deriveValidationMessage,
+	ensureTouched,
 	extractValidator,
 	flattenDefaults,
 	flattenFormDefinition,
+	isFlagSet,
 	resolveManualErrorMessage,
+	setTouchedAndDirty,
 	toFormData,
 	toInputString,
 } from "./helpers"
@@ -39,7 +42,8 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		[formDefinition],
 	)
 
-	const initialValues = useMemo(() => flattenDefaults(formDefinition) as FlatDefaults<T>, [formDefinition])
+    const initialValues = useMemo<FlatDefaults<T>>(() => flattenDefaults(formDefinition),[formDefinition],)
+
 
 	// Cache initial string representations for comparison
 	const initialValueStrings = useMemo(() => {
@@ -74,23 +78,6 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 	}, [initialValues])
 
 	useWatchValueSubscriptions(data, watchEntriesRef, previousDataRef)
-
-	const ensureTouched = useCallback((prev: Flags, field: string) => {
-		return prev[field] ? prev : { ...prev, [field]: true }
-	}, [])
-
-	const updateDirtyFlags = useCallback((prev: Flags, field: string, isDirty: boolean) => {
-		const wasDirty = Boolean(prev[field])
-		if (isDirty) {
-			return wasDirty ? prev : { ...prev, [field]: true }
-		}
-		if (!wasDirty) return prev
-
-		const next = { ...prev }
-		delete next[field]
-		return next
-	}, [])
-
 	const getFieldDefinition = useCallback(
 		(field: string): FieldDefinition => {
 			const def = flatFormDefinition[field]
@@ -299,11 +286,10 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				const initialValue = initialValueStrings[field] ?? ""
 				const isDirty = value !== initialValue
 
-				setTouched((prev) => ensureTouched(prev, field))
+				setTouchedAndDirty(field, isDirty, setTouched, setDirty)
 				setData((prev) => (prev[field] === value ? prev : { ...prev, [field]: value }))
-				setDirty((prev) => updateDirtyFlags(prev, field, isDirty))
 
-				await validateField(field, value)
+				await validateField(field, value).catch(console.error)
 			}
 
 			const onReset = () => resetForm()
@@ -318,8 +304,6 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 			validateField,
 			formDefinitionKeys,
 			validateForm,
-			ensureTouched,
-			updateDirtyFlags,
 		],
 	)
 
@@ -354,12 +338,11 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 			const isDirty = value !== initialValue
 
 			setData((prev) => (prev[field] === value ? prev : { ...prev, [field]: value }))
-			setTouched((prev) => ensureTouched(prev, field))
-			setDirty((prev) => updateDirtyFlags(prev, field, isDirty))
+			setTouchedAndDirty(field, isDirty, setTouched, setDirty)
 
-			await validateField(field, value)
+			await validateField(field, value).catch(console.error)
 		},
-		[validateField, initialValueStrings, getFieldDefinition, ensureTouched, updateDirtyFlags],
+		[validateField, initialValueStrings, getFieldDefinition],
 	)
 
 	const setError = useCallback(
@@ -416,35 +399,9 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		[formDefinitionKeys, errors, getFieldDefinition],
 	)
 
-	const isTouched = useCallback(
-		(name?: FieldKey) => {
-			if (name) {
-				const key = name as string
-				return Boolean(touched[key])
-			}
+	const isTouched = useCallback((name?: FieldKey) => isFlagSet(touched, name as string | undefined), [touched])
 
-			for (const value of Object.values(touched)) {
-				if (value) return true
-			}
-			return false
-		},
-		[touched],
-	)
-
-	const isDirty = useCallback(
-		(name?: FieldKey) => {
-			if (name) {
-				const key = name as string
-				return Boolean(dirty[key])
-			}
-
-			for (const value of Object.values(dirty)) {
-				if (value) return true
-			}
-			return false
-		},
-		[dirty],
-	)
+	const isDirty = useCallback((name?: FieldKey) => isFlagSet(dirty, name as string | undefined), [dirty])
 
 	const watchValues = useCallback(
 		((

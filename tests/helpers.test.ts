@@ -76,6 +76,40 @@ describe("helpers", () => {
 		expect(() => defineForm(unsafe)).toThrowError('Unsafe form key segment "__proto__"')
 	})
 
+
+	it("defineForm rejects non-object roots", () => {
+		const unsafe = null as unknown as Parameters<typeof defineForm>[0]
+		expect(() => defineForm(unsafe)).toThrowError('Invalid form definition at "<root>": expected a plain object')
+	})
+
+	it("defineForm rejects invalid nested values", () => {
+		const unsafe = {
+			a: 123,
+		} as unknown as Parameters<typeof defineForm>[0]
+
+		expect(() => defineForm(unsafe)).toThrowError(
+			'Invalid form definition at "a": expected a field definition or nested object',
+		)
+	})
+
+	it("defineForm rejects non-string defaultValue", () => {
+		const unsafe = {
+			a: { label: "A", defaultValue: 123, validate: noopString() },
+		} as unknown as Parameters<typeof defineForm>[0]
+
+		expect(() => defineForm(unsafe)).toThrowError('Invalid field defaultValue at "a": expected a string')
+	})
+
+	it("defineForm rejects non-standard validators", () => {
+		const unsafe = {
+			a: { label: "A", validate: { nope: true } },
+		} as unknown as Parameters<typeof defineForm>[0]
+
+		expect(() => defineForm(unsafe)).toThrowError(
+			'Invalid field validator at "a": expected a Standard Schema validator',
+		)
+	})
+
 	it("toFormData stringifies defined values and excludes nullish entries", () => {
 		const values = {
 			username: "alice",

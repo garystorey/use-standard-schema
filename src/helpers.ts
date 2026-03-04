@@ -2,6 +2,7 @@ import type {
 	AssertValidFormKeysDeep,
 	ErrorInfo,
 	FieldDefinition,
+	Flags,
 	FlatDefaults,
 	FlatFormDefinition,
 	FormDefinition,
@@ -14,25 +15,57 @@ const DISALLOWED_PATH_SEGMENTS = new Set(["__proto__", "constructor", "prototype
 export function defineForm<T extends FormDefinition>(
 	formDefinition: AssertValidFormKeysDeep<T>,
 ): AssertValidFormKeysDeep<T> {
-	assertSafeFormKeys(formDefinition)
+	assertValidFormDefinition(formDefinition)
 	return formDefinition
+}
+
+
+function assertValidFormDefinition(formDefinition: unknown, parentPath = ""): void {
+	if (!isPlainObject(formDefinition)) {
+		const pathLabel = parentPath || "<root>"
+		throw new Error(`Invalid form definition at "${pathLabel}": expected a plain object`)
+	}
+
+	for (const [propertyKey, propertyValue] of Object.entries(formDefinition)) {
+		const fullPath = parentPath ? `${parentPath}.${propertyKey}` : propertyKey
+		assertSafePathKey(propertyKey, fullPath)
+
+		if (isFieldDefinition(propertyValue)) {
+			assertValidFieldDefinition(propertyValue, fullPath)
+			continue
+		}
+
+		if (isPlainObject(propertyValue)) {
+			assertValidFormDefinition(propertyValue, fullPath)
+			continue
+		}
+
+		throw new Error(`Invalid form definition at "${fullPath}": expected a field definition or nested object`)
+	}
+}
+
+function assertValidFieldDefinition(fieldDefinition: FieldDefinition, fullPath: string): void {
+	if (typeof fieldDefinition.label !== "string") {
+		throw new Error(`Invalid field label at "${fullPath}": expected a string`)
+	}
+
+	if (fieldDefinition.description !== undefined && typeof fieldDefinition.description !== "string") {
+		throw new Error(`Invalid field description at "${fullPath}": expected a string`)
+	}
+
+	if (fieldDefinition.defaultValue !== undefined && typeof fieldDefinition.defaultValue !== "string") {
+		throw new Error(`Invalid field defaultValue at "${fullPath}": expected a string`)
+	}
+
+	if (!extractValidator(fieldDefinition.validate)) {
+		throw new Error(`Invalid field validator at "${fullPath}": expected a Standard Schema validator`)
+	}
 }
 
 function assertSafePathKey(key: string, fullPath: string): void {
 	for (const segment of key.split(".")) {
 		if (DISALLOWED_PATH_SEGMENTS.has(segment)) {
 			throw new Error(`Unsafe form key segment "${segment}" at "${fullPath}"`)
-		}
-	}
-}
-
-function assertSafeFormKeys(formDefinition: FormDefinition, parentPath = ""): void {
-	for (const [propertyKey, propertyValue] of Object.entries(formDefinition)) {
-		const fullPath = parentPath ? `${parentPath}.${propertyKey}` : propertyKey
-		assertSafePathKey(propertyKey, fullPath)
-
-		if (isPlainObject(propertyValue) && !isFieldDefinition(propertyValue)) {
-			assertSafeFormKeys(propertyValue as FormDefinition, fullPath)
 		}
 	}
 }
@@ -173,6 +206,45 @@ export function toInputString(value: unknown): string {
 	if (typeof value === "string") return value
 	if (value == null) return ""
 	return String(value)
+}
+
+export function ensureTouched(prev: Flags, field: string): Flags {
+	return prev[field] ? prev : { ...prev, [field]: true }
+}
+
+export function updateDirtyFlags(prev: Flags, field: string, isDirty: boolean): Flags {
+	const wasDirty = Boolean(prev[field])
+	if (isDirty) {
+		return wasDirty ? prev : { ...prev, [field]: true }
+	}
+	if (!wasDirty) return prev
+
+	const next = { ...prev }
+	delete next[field]
+	return next
+}
+
+type SetFlagsState = (value: Flags | ((prev: Flags) => Flags)) => void
+
+export function setTouchedAndDirty(
+	field: string,
+	isDirty: boolean,
+	setTouched: SetFlagsState,
+	setDirty: SetFlagsState,
+): void {
+	setTouched((prev) => ensureTouched(prev, field))
+	setDirty((prev) => updateDirtyFlags(prev, field, isDirty))
+}
+
+export function isFlagSet(flags: Flags, field?: string): boolean {
+	if (field !== undefined) {
+		return Boolean(flags[field])
+	}
+
+	for (const value of Object.values(flags)) {
+		if (value) return true
+	}
+	return false
 }
 
 export function flattenDefaults<Def extends FormDefinition>(
