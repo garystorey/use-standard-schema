@@ -6,7 +6,7 @@ import { useStandardSchema } from "../src"
 import { defineForm } from "../src/helpers"
 import type { ErrorEntry, UseStandardSchemaReturn } from "../src/types"
 import { makeForm, makeThrowingForm, renderFormHarness, renderHookHarness } from "./test-utils"
-import { delayed } from "./test-validation-lib"
+import { delayed, email as emailValidator, string as reqString } from "./test-validation-lib"
 
 describe("useStandardSchema (basic)", () => {
 	it("getField surfaces metadata, accessibility ids, and default flags", () => {
@@ -173,6 +173,102 @@ describe("useStandardSchema (basic)", () => {
 		})
 	})
 
+	
+	it("dependent field updates with setField/setError keep state and validation in sync", async () => {
+		const dependentForm = defineForm({
+			primary: { label: "Primary", defaultValue: "", validate: reqString("Primary required") },
+			secondary: { label: "Secondary", defaultValue: "", validate: emailValidator("Invalid email") },
+		})
+
+		type DependentForm = typeof dependentForm
+
+		const HookHarness = forwardRef<UseStandardSchemaReturn<DependentForm> | null, { formDef: DependentForm }>(
+			function HookHarness(props, ref) {
+				const api = useStandardSchema(props.formDef)
+				useImperativeHandle(ref, () => api, [api])
+				return null
+			},
+		)
+
+		const ref = React.createRef<UseStandardSchemaReturn<DependentForm> | null>()
+		render(<HookHarness ref={ref} formDef={dependentForm} />)
+
+		const applyPrimaryDependency = async (nextPrimary: string) => {
+			await ref.current!.setField("primary", nextPrimary)
+			await ref.current!.setField("secondary", nextPrimary)
+
+			if (!nextPrimary.includes("@")) {
+				ref.current!.setError("secondary", "Secondary must stay a valid email")
+			} else {
+				ref.current!.setError("secondary", null)
+			}
+		}
+
+		await act(async () => {
+			await applyPrimaryDependency("owner@example.com")
+		})
+
+		await waitFor(() => {
+			expect(ref.current!.getField("primary").defaultValue).toBe("owner@example.com")
+			expect(ref.current!.getField("secondary").defaultValue).toBe("owner@example.com")
+			expect(ref.current!.getField("secondary").error).toBe("")
+			expect(ref.current!.isTouched("primary")).toBe(true)
+			expect(ref.current!.isTouched("secondary")).toBe(true)
+			expect(ref.current!.isDirty("primary")).toBe(true)
+			expect(ref.current!.isDirty("secondary")).toBe(true)
+		})
+
+		await act(async () => {
+			await applyPrimaryDependency("not-an-email")
+		})
+
+		await waitFor(() => {
+			expect(ref.current!.getField("primary").defaultValue).toBe("not-an-email")
+			expect(ref.current!.getField("secondary").defaultValue).toBe("not-an-email")
+			expect(ref.current!.getField("secondary").error).toBe("Secondary must stay a valid email")
+			expect(ref.current!.getErrors("secondary")).toEqual([
+				{ name: "secondary", error: "Secondary must stay a valid email", label: "Secondary" },
+			])
+		})
+
+		await act(async () => {
+			await applyPrimaryDependency("next@example.com")
+		})
+
+		await waitFor(() => {
+			expect(ref.current!.getField("primary").defaultValue).toBe("next@example.com")
+			expect(ref.current!.getField("secondary").defaultValue).toBe("next@example.com")
+			expect(ref.current!.getField("secondary").error).toBe("")
+			expect(ref.current!.getErrors("secondary")).toEqual([])
+		})
+	})
+it("validation updates replace manual errors with validator output", async () => {
+		const { ref } = renderHookHarness()
+
+		act(() => {
+			ref.current!.setError("name", "Manual issue")
+		})
+
+		await waitFor(() => {
+			expect(ref.current!.getField("name").error).toBe("Manual issue")
+		})
+
+		await act(async () => {
+			await ref.current!.setField("name", "Alice")
+		})
+
+		await waitFor(() => {
+			expect(ref.current!.getField("name").error).toBe("")
+		})
+
+		await act(async () => {
+			await ref.current!.setField("name", "")
+		})
+
+		await waitFor(() => {
+			expect(ref.current!.getField("name").error).toBe("Required")
+		})
+	})
 	it("resets state when form definition changes", async () => {
 		const firstForm = makeForm()
 		const { ref, rerenderWith } = renderHookHarness(firstForm)
@@ -278,6 +374,41 @@ describe("useStandardSchema (basic)", () => {
 			expect(ref.current!.isTouched()).toBe(false)
 		})
 	})
+	it("form definition changes drop in-flight validations from prior definitions", async () => {
+		const firstForm = defineForm({
+			name: { label: "Name", defaultValue: "Joe" as string, validate: delayed("Old required", 40) },
+		})
+		const secondForm = defineForm({
+			name: { label: "Name", defaultValue: "Jane" as string, validate: delayed("New required", 0) },
+		})
+
+		type AsyncForm = typeof firstForm
+
+		const HookHarness = forwardRef<UseStandardSchemaReturn<AsyncForm> | null, { formDef: AsyncForm }>(
+			function HookHarness(props, ref) {
+				const api = useStandardSchema(props.formDef)
+				useImperativeHandle(ref, () => api, [api])
+				return null
+			},
+		)
+
+		const ref = React.createRef<UseStandardSchemaReturn<AsyncForm> | null>()
+		const view = render(<HookHarness ref={ref} formDef={firstForm} />)
+
+		await act(async () => {
+			const pending = ref.current!.setField("name", "")
+			view.rerender(<HookHarness ref={ref} formDef={secondForm} />)
+			await pending
+		})
+
+		await waitFor(() => {
+			const field = ref.current!.getField("name")
+			expect(field.defaultValue).toBe("Jane")
+			expect(field.error).toBe("")
+			expect(ref.current!.isDirty()).toBe(false)
+			expect(ref.current!.isTouched()).toBe(false)
+		})
+	})
 	it("handles validators that throw errors without crashing", async () => {
 		const { ref } = renderHookHarness(makeThrowingForm())
 
@@ -352,6 +483,52 @@ describe("useStandardSchema getForm handlers (inline)", () => {
 		})
 	})
 
+	it("onSubmit blocks invalid forms and reports validation errors", async () => {
+		const spy = vi.fn()
+		const invalidDefaultsForm = makeForm("")
+		const { ref } = renderFormHarness({ formDef: invalidDefaultsForm, onSubmitSpy: spy })
+
+		const formEl = screen.getByTestId("form") as HTMLFormElement
+		fireEvent.submit(formEl)
+
+		await waitFor(() => {
+			expect(spy).not.toHaveBeenCalled()
+			expect(ref.current!.getErrors()).toEqual([
+				{ name: "name", error: "Required", label: "Name" },
+				{ name: "contact.email", error: "Invalid email", label: "Email" },
+			])
+		})
+	})
+
+	it("failed submit keeps current values and interaction state", async () => {
+		const spy = vi.fn()
+		const { ref } = renderFormHarness({ formDef: makeForm(), onSubmitSpy: spy })
+
+		const user = userEvent.setup()
+		const nameInput = screen.getByLabelText("Name") as HTMLInputElement
+		await user.clear(nameInput)
+		await user.type(nameInput, "Janet")
+		fireEvent.blur(nameInput)
+
+		await waitFor(() => {
+			expect(ref.current!.getField("name").defaultValue).toBe("Janet")
+			expect(ref.current!.isDirty("name")).toBe(true)
+			expect(ref.current!.isTouched("name")).toBe(true)
+		})
+
+		const formEl = screen.getByTestId("form") as HTMLFormElement
+		fireEvent.submit(formEl)
+
+		await waitFor(() => {
+			expect(spy).not.toHaveBeenCalled()
+			expect(ref.current!.getField("name").defaultValue).toBe("Janet")
+			expect(ref.current!.isDirty("name")).toBe(true)
+			expect(ref.current!.isTouched("name")).toBe(true)
+			expect(ref.current!.getErrors("contact.email")).toEqual([
+				{ name: "contact.email", error: "Invalid email", label: "Email" },
+			])
+		})
+	})
 	it("onSubmit retains programmatic updates when no DOM interaction occurs", async () => {
 		const spy = vi.fn()
 		const { ref } = renderFormHarness({ formDef: makeForm(), onSubmitSpy: spy })
@@ -473,6 +650,30 @@ describe("useStandardSchema getForm handlers (inline)", () => {
 		})
 	})
 
+	
+	it("onFocus clears existing errors for nested fields inside the form", async () => {
+		const spy = vi.fn()
+		const { ref } = renderFormHarness({ formDef: makeForm(), onSubmitSpy: spy })
+
+		await act(async () => {
+			await ref.current!.setField("contact.email", "invalid")
+		})
+
+		await waitFor(() => {
+			const errs = ref.current!.getErrors("contact.email")
+			expect(errs.length).toBe(1)
+			expect(errs[0].error).toBe("Invalid email")
+		})
+
+		const emailInput = screen.getByLabelText("Email") as HTMLInputElement
+		fireEvent.focus(emailInput)
+
+		await waitFor(() => {
+			const errs = ref.current!.getErrors("contact.email")
+			expect(errs.length).toBe(0)
+			expect(ref.current!.isTouched("contact.email")).toBe(true)
+		})
+	})
 	it("onBlur updates data and sets dirty when changed", async () => {
 		const spy = vi.fn()
 		const { ref } = renderFormHarness({ formDef: makeForm(), onSubmitSpy: spy })
@@ -491,6 +692,25 @@ describe("useStandardSchema getForm handlers (inline)", () => {
 		})
 	})
 
+	
+	it("onBlur validates nested field values from form inputs", async () => {
+		const spy = vi.fn()
+		const { ref } = renderFormHarness({ formDef: makeForm(), onSubmitSpy: spy })
+
+		const user = userEvent.setup()
+		const emailInput = screen.getByLabelText("Email") as HTMLInputElement
+		await user.clear(emailInput)
+		await user.type(emailInput, "not-an-email")
+		fireEvent.blur(emailInput)
+
+		await waitFor(() => {
+			const field = ref.current!.getField("contact.email")
+			expect(field.defaultValue).toBe("not-an-email")
+			expect(field.error).toBe("Invalid email")
+			expect(ref.current!.isDirty("contact.email")).toBe(true)
+			expect(ref.current!.isTouched("contact.email")).toBe(true)
+		})
+	})
 	it("onBlur clears dirty when value reverts to default", async () => {
 		const spy = vi.fn()
 		const { ref } = renderFormHarness({ formDef: makeForm(), onSubmitSpy: spy })
@@ -518,6 +738,21 @@ describe("useStandardSchema getForm handlers (inline)", () => {
 		})
 	})
 
+	
+	it("onFocus and onBlur ignore non-field elements inside the form", async () => {
+		const spy = vi.fn()
+		const { ref } = renderFormHarness({ formDef: makeForm(), onSubmitSpy: spy })
+
+		const submitButton = screen.getByRole("button", { name: "Submit" }) as HTMLButtonElement
+		fireEvent.focus(submitButton)
+		fireEvent.blur(submitButton)
+
+		await waitFor(() => {
+			expect(ref.current!.isTouched()).toBe(false)
+			expect(ref.current!.isDirty()).toBe(false)
+			expect(ref.current!.getErrors()).toEqual([])
+		})
+	})
 	it("watchValues notifies subscribers only when tracked fields change", async () => {
 		const { ref } = renderHookHarness()
 
@@ -652,4 +887,14 @@ describe("useStandardSchema getForm handlers (inline)", () => {
 		})
 	})
 })
+
+
+
+
+
+
+
+
+
+
 
