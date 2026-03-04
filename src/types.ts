@@ -13,11 +13,7 @@ export type Errors = {
 	[key: string]: string
 }
 
-export type Keyed<K extends string, V> = {
-	[P in K]: V
-}
-
-export type ErrorDetails = {
+type ErrorDetails = {
 	message?: string | null
 }
 
@@ -30,8 +26,7 @@ export interface FieldDefinition {
 	validate: StandardSchemaV1
 }
 
-export type SchemaValidator = FieldDefinition["validate"]["~standard"]["validate"]
-export type StandardValidator = SchemaValidator | ((value: string) => unknown | Promise<unknown>)
+export type StandardValidator = FieldDefinition["validate"]["~standard"]["validate"] | ((value: string) => unknown | Promise<unknown>)
 
 export type FormDefinition = {
 	[key: string]: FieldDefinition | FormDefinition
@@ -90,7 +85,7 @@ export type FormWatchEntry<K extends string = string> = {
 	callback: (values: FormValues) => void
 }
 
-export type ValidationTokenMap<K extends string = string> = Partial<Keyed<K, number>>
+export type ValidationTokenMap<K extends string = string> = Partial<Record<K, number>>
 
 export type ErrorEntry = { name: string; error: string; label: string }
 
@@ -142,7 +137,7 @@ type _IsValidSegment<S extends string> = S extends ""
 				? false
 				: true
 
-export type FormPathKey<S extends string> = S extends `${infer Head}.${infer Tail}`
+type FormPathKey<S extends string> = S extends `${infer Head}.${infer Tail}`
 	? _IsValidSegment<Head> extends true
 		? FormPathKey<Tail>
 		: never
@@ -194,4 +189,3 @@ export interface UseStandardSchemaReturn<T extends FormDefinition> {
 	isDirty: (name?: DotPaths<T>) => boolean
 	watchValues: WatchValuesCallback<T>
 }
-

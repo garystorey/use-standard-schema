@@ -44,7 +44,6 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 
 	const initialValues = useMemo<FlatDefaults<T>>(() => flattenDefaults(formDefinition), [formDefinition])
 
-
 	// Cache initial string representations for comparison
 	const initialValueStrings = useMemo(() => {
 		const entries: FormValues = {}
@@ -68,18 +67,26 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 	const validationTokensRef = useRef<ValidationTokenMap<string>>({})
 	const validationRunId = useRef(0)
 
-	useEffect(() => {
-		setData(initialValues)
+	const resetState = useCallback((nextValues: FormValues, syncPreviousData = false) => {
+		setData(nextValues)
 		setErrors({})
 		setTouched({})
 		setDirty({})
 		domInteractedRef.current = {}
 		validationTokensRef.current = {}
 		validationRunId.current += 1
-		previousDataRef.current = initialValues
-	}, [initialValues])
+
+		if (syncPreviousData) {
+			previousDataRef.current = nextValues
+		}
+	}, [])
+
+	useEffect(() => {
+		resetState(initialValues, true)
+	}, [initialValues, resetState])
 
 	useWatchValueSubscriptions(data, watchEntriesRef, previousDataRef)
+
 	const getFieldDefinition = useCallback(
 		(field: string): FieldDefinition => {
 			const def = flatFormDefinition[field]
@@ -128,6 +135,37 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 			return message === ""
 		},
 		[validateFieldValue],
+	)
+
+	const markDomInteracted = useCallback((field: string) => {
+		domInteractedRef.current = ensureTouched(domInteractedRef.current, field)
+	}, [])
+
+	const clearDomInteracted = useCallback((field: string) => {
+		if (!domInteractedRef.current[field]) return
+
+		const nextInteracted = { ...domInteractedRef.current }
+		delete nextInteracted[field]
+		domInteractedRef.current = nextInteracted
+	}, [])
+
+	const commitFieldValue = useCallback(
+		async (field: string, value: string, domInteraction: "mark" | "clear") => {
+			const initialValue = initialValueStrings[field] ?? ""
+			const isDirty = value !== initialValue
+
+			if (domInteraction === "mark") {
+				markDomInteracted(field)
+			} else {
+				clearDomInteracted(field)
+			}
+
+			setTouchedAndDirty(field, isDirty, setTouched, setDirty)
+			setData((prev) => (prev[field] === value ? prev : { ...prev, [field]: value }))
+
+			await validateField(field, value).catch(console.error)
+		},
+		[clearDomInteracted, initialValueStrings, markDomInteracted, validateField],
 	)
 
 	const validateForm = useCallback(
@@ -206,15 +244,53 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		[formDefinitionKeys, flatFormDefinition, data, validateFieldValue],
 	)
 
+	const resolveSubmissionValues = useCallback(
+		(formEl: HTMLFormElement, stateValues: FormValues): FormValues => {
+			// Use FormData to capture values that might not have triggered React onChange/onBlur yet
+			// (e.g., autofill).
+			const submissionEntries = new Map<string, string>()
+			for (const [key, rawValue] of new FormData(formEl).entries()) {
+				if (Object.hasOwn(flatFormDefinition, key) && !submissionEntries.has(key)) {
+					submissionEntries.set(key, typeof rawValue === "string" ? rawValue : String(rawValue))
+				}
+			}
+
+			const updates: FormValues = {}
+			let hasChanges = false
+
+			for (const key of formDefinitionKeys) {
+				const stateValue = stateValues[key]
+				const stateString = toInputString(stateValue)
+				const initialString = initialValueStrings[key] ?? ""
+				const submissionValue = submissionEntries.get(key)
+				let resolvedValue = stateValue
+
+				if (submissionValue !== undefined) {
+					// Preserve programmatic state only if the field has not seen DOM interaction.
+					const shouldPreferState =
+						stateString !== initialString &&
+						submissionValue === initialString &&
+						!domInteractedRef.current[key]
+
+					if (!shouldPreferState) {
+						resolvedValue = submissionValue
+					}
+				}
+
+				if (!Object.is(stateValue, resolvedValue)) {
+					updates[key] = resolvedValue
+					hasChanges = true
+				}
+			}
+
+			return hasChanges ? { ...stateValues, ...updates } : stateValues
+		},
+		[flatFormDefinition, formDefinitionKeys, initialValueStrings],
+	)
+
 	const resetForm = useCallback(() => {
-		setData(initialValues)
-		setErrors({})
-		setTouched({})
-		setDirty({})
-		domInteractedRef.current = {}
-		validationTokensRef.current = {}
-		validationRunId.current += 1
-	}, [initialValues])
+		resetState(initialValues)
+	}, [initialValues, resetState])
 
 	const getForm = useCallback(
 		(onSubmitHandler: (data: TypeFromDefinition<typeof formDefinition>) => void) => {
@@ -222,47 +298,8 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				const formEl = e.currentTarget as HTMLFormElement
 				e.preventDefault()
 
-				// Use FormData to capture values that might not have triggered React onChange/onBlur yet
-				// (e.g., autofill).
-				const submissionEntries = new Map<string, string>()
-				for (const [key, rawValue] of new FormData(formEl).entries()) {
-					if (Object.hasOwn(flatFormDefinition, key) && !submissionEntries.has(key)) {
-						submissionEntries.set(key, typeof rawValue === "string" ? rawValue : String(rawValue))
-					}
-				}
-
-				const updates: FormValues = {}
-				let hasChanges = false
-
-				for (const key of formDefinitionKeys) {
-					const stateValue = data[key]
-					const stateString = toInputString(stateValue)
-					const initialString = initialValueStrings[key] ?? ""
-					const submissionValue = submissionEntries.get(key)
-
-					let resolvedValue = stateValue
-
-					if (submissionValue !== undefined) {
-						// Preserve programmatic state only if the field has not seen DOM interaction.
-						const shouldPreferState =
-							stateString !== initialString &&
-							submissionValue === initialString &&
-							!domInteractedRef.current[key]
-
-						if (!shouldPreferState) {
-							resolvedValue = submissionValue
-						}
-					}
-
-					if (!Object.is(stateValue, resolvedValue)) {
-						updates[key] = resolvedValue
-						hasChanges = true
-					}
-				}
-
-				const finalValues: FormValues = hasChanges ? { ...data, ...updates } : data
-
-				if (hasChanges) {
+				const finalValues = resolveSubmissionValues(formEl, data)
+				if (!Object.is(finalValues, data)) {
 					setData(finalValues)
 				}
 
@@ -278,7 +315,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				const field = e.target.name
 				if (!field || !Object.hasOwn(flatFormDefinition, field)) return
 
-				domInteractedRef.current = ensureTouched(domInteractedRef.current, field)
+				markDomInteracted(field)
 				setTouched((prev) => ensureTouched(prev, field))
 				setErrors((prev) => (prev[field] === "" ? prev : { ...prev, [field]: "" }))
 			}
@@ -287,15 +324,7 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				const field = e.target.name
 				if (!field || !Object.hasOwn(flatFormDefinition, field)) return
 
-				const value = e.target.value
-				const initialValue = initialValueStrings[field] ?? ""
-				const isDirty = value !== initialValue
-
-				domInteractedRef.current = ensureTouched(domInteractedRef.current, field)
-				setTouchedAndDirty(field, isDirty, setTouched, setDirty)
-				setData((prev) => (prev[field] === value ? prev : { ...prev, [field]: value }))
-
-				await validateField(field, value).catch(console.error)
+				await commitFieldValue(field, e.target.value, "mark")
 			}
 
 			const onReset = () => resetForm()
@@ -305,10 +334,10 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		[
 			flatFormDefinition,
 			data,
-			initialValueStrings,
+			commitFieldValue,
+			markDomInteracted,
 			resetForm,
-			validateField,
-			formDefinitionKeys,
+			resolveSubmissionValues,
 			validateForm,
 		],
 	)
@@ -340,21 +369,9 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		async (name: FieldKey, value: string) => {
 			const field = name as string
 			getFieldDefinition(field)
-			const initialValue = initialValueStrings[field] ?? ""
-			const isDirty = value !== initialValue
-
-			if (domInteractedRef.current[field]) {
-				const nextInteracted = { ...domInteractedRef.current }
-				delete nextInteracted[field]
-				domInteractedRef.current = nextInteracted
-			}
-
-			setData((prev) => (prev[field] === value ? prev : { ...prev, [field]: value }))
-			setTouchedAndDirty(field, isDirty, setTouched, setDirty)
-
-			await validateField(field, value).catch(console.error)
+			await commitFieldValue(field, value, "clear")
 		},
-		[validateField, initialValueStrings, getFieldDefinition],
+		[commitFieldValue, getFieldDefinition],
 	)
 
 	const setError = useCallback(
