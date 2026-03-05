@@ -126,7 +126,6 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 				field,
 				value,
 				initialValue,
-				domInteraction,
 			})
 
 			await validateField(field, value).catch(console.error)
@@ -245,20 +244,17 @@ function useStandardSchema<T extends FormDefinition>(formDefinition: T): UseStan
 		(name: FieldKey): FieldData => {
 			const key = name as string
 			const def = getFieldDefinition(key)
-			const describedById = `${key}-description`
-			const errorId = `${key}-error`
-
-			const { validate: _validate, ...fieldDef } = def
 
 			return {
-				...fieldDef,
 				name: key,
+				label: def.label,
+				description: def.description,
 				defaultValue: state.values[key] ?? "",
 				error: state.errors[key] ?? "",
 				touched: state.touched[key] ?? false,
 				dirty: state.dirty[key] ?? false,
-				describedById,
-				errorId,
+				describedById: `${key}-description`,
+				errorId: `${key}-error`,
 			}
 		},
 		[getFieldDefinition, state.dirty, state.errors, state.touched, state.values],

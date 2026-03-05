@@ -93,20 +93,17 @@ export type CompiledFormModel<Def extends FormDefinition = FormDefinition> = {
 	validators: Record<string, StandardValidator | undefined>
 }
 
-export type DomInteraction = "mark" | "clear"
-
 export interface FormState {
 	values: FormValues
 	errors: Errors
 	touched: Flags
 	dirty: Flags
-	domInteracted: Flags
 }
 
 export type FormAction =
 	| { type: "reset"; values: FormValues }
 	| { type: "focusField"; field: string }
-	| { type: "commitFieldValue"; field: string; value: string; initialValue: string; domInteraction: DomInteraction }
+	| { type: "commitFieldValue"; field: string; value: string; initialValue: string }
 	| { type: "mergeResolvedSubmissionValues"; values: FormValues }
 	| { type: "setFieldError"; field: string; message: string | null }
 	| { type: "setAllErrors"; errors: Errors }

@@ -1,5 +1,5 @@
 import { ensureTouched, updateDirtyFlags } from "./helpers"
-import type { Flags, FormAction, FormState, FormValues } from "./types"
+import type { FormAction, FormState, FormValues } from "./types"
 
 export function createFormState(values: FormValues): FormState {
 	return {
@@ -7,7 +7,6 @@ export function createFormState(values: FormValues): FormState {
 		errors: {},
 		touched: {},
 		dirty: {},
-		domInteracted: {},
 	}
 }
 
@@ -23,13 +22,6 @@ function shallowEqualRecords<T extends string | boolean>(a: Record<string, T>, b
 	return true
 }
 
-function clearDomInteraction(prev: Flags, field: string): Flags {
-	if (!prev[field]) return prev
-	const next = { ...prev }
-	delete next[field]
-	return next
-}
-
 export function formReducer(state: FormState, action: FormAction): FormState {
 	switch (action.type) {
 		case "reset":
@@ -38,27 +30,20 @@ export function formReducer(state: FormState, action: FormAction): FormState {
 				errors: {},
 				touched: {},
 				dirty: {},
-				domInteracted: {},
 			}
 
 		case "focusField": {
 			const nextTouched = ensureTouched(state.touched, action.field)
-			const nextDomInteracted = ensureTouched(state.domInteracted, action.field)
 			const nextErrors =
 				state.errors[action.field] === "" ? state.errors : { ...state.errors, [action.field]: "" }
 
-			if (
-				nextTouched === state.touched &&
-				nextDomInteracted === state.domInteracted &&
-				nextErrors === state.errors
-			) {
+			if (nextTouched === state.touched && nextErrors === state.errors) {
 				return state
 			}
 
 			return {
 				...state,
 				touched: nextTouched,
-				domInteracted: nextDomInteracted,
 				errors: nextErrors,
 			}
 		}
@@ -69,17 +54,8 @@ export function formReducer(state: FormState, action: FormAction): FormState {
 			const nextDirty = updateDirtyFlags(state.dirty, action.field, isDirty)
 			const nextValues =
 				state.values[action.field] === action.value ? state.values : { ...state.values, [action.field]: action.value }
-			const nextDomInteracted =
-				action.domInteraction === "mark"
-					? ensureTouched(state.domInteracted, action.field)
-					: clearDomInteraction(state.domInteracted, action.field)
 
-			if (
-				nextTouched === state.touched &&
-				nextDirty === state.dirty &&
-				nextValues === state.values &&
-				nextDomInteracted === state.domInteracted
-			) {
+			if (nextTouched === state.touched && nextDirty === state.dirty && nextValues === state.values) {
 				return state
 			}
 
@@ -88,7 +64,6 @@ export function formReducer(state: FormState, action: FormAction): FormState {
 				touched: nextTouched,
 				dirty: nextDirty,
 				values: nextValues,
-				domInteracted: nextDomInteracted,
 			}
 		}
 
@@ -140,3 +115,4 @@ export function formReducer(state: FormState, action: FormAction): FormState {
 			return state
 	}
 }
+

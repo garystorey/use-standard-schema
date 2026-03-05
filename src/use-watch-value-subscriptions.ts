@@ -2,23 +2,20 @@ import type { RefObject } from "react"
 import { useEffect } from "react"
 import type { FormValues, FormWatchEntry } from "./types"
 
+function selectChangedFields(fields: readonly string[], previous: FormValues, current: FormValues): FormValues | null {
+	const selection: FormValues = {}
+	let hasChange = false
 
-function hasRelevantChange(fields: readonly string[], previous: FormValues, current: FormValues): boolean {
 	for (const field of fields) {
-		if ((previous[field] ?? "") !== (current[field] ?? "")) {
-			return true
+		const previousValue = previous[field] ?? ""
+		const currentValue = current[field] ?? ""
+		selection[field] = currentValue
+		if (previousValue !== currentValue) {
+			hasChange = true
 		}
 	}
 
-	return false
-}
-
-function selectFields(fields: readonly string[], values: FormValues): FormValues {
-	const selection: FormValues = {}
-	for (const field of fields) {
-		selection[field] = values[field] ?? ""
-	}
-	return selection
+	return hasChange ? selection : null
 }
 
 function notifyEntry(entry: FormWatchEntry, previous: FormValues, current: FormValues): void {
@@ -29,11 +26,12 @@ function notifyEntry(entry: FormWatchEntry, previous: FormValues, current: FormV
 		return
 	}
 
-	if (!hasRelevantChange(fields, previous, current)) {
+	const selected = selectChangedFields(fields, previous, current)
+	if (!selected) {
 		return
 	}
 
-	entry.callback(selectFields(fields, current))
+	entry.callback(selected)
 }
 
 function useWatchValueSubscriptions(

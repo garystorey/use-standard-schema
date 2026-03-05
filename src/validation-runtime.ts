@@ -24,7 +24,6 @@ export function createValidationRuntime(
 	fieldKeys: readonly string[],
 	validators: Record<string, StandardValidator | undefined>,
 ): ValidationRuntime {
-	const keySet = new Set(fieldKeys)
 	let validationRunId = 0
 	let validationTokens: ValidationTokenMap<string> = Object.create(null)
 
@@ -95,34 +94,24 @@ export function createValidationRuntime(
 		tokensForRun: ValidationTokenMap<string>,
 	): Errors => {
 		let changed = false
-		const nextErrors: Errors = {}
 
 		for (const key of fieldKeys) {
 			const previous = previousErrors[key] ?? ""
-
-			if (validationTokens[key] !== tokensForRun[key]) {
-				nextErrors[key] = previous
-				continue
-			}
-
-			const message = batchErrors[key] ?? ""
-			nextErrors[key] = message
+			const message = validationTokens[key] === tokensForRun[key] ? (batchErrors[key] ?? "") : previous
 			if (previous !== message) {
 				changed = true
+				break
 			}
 		}
 
 		if (!changed) {
-			for (const key of Object.keys(previousErrors)) {
-				if (!keySet.has(key)) {
-					changed = true
-					break
-				}
-			}
+			return previousErrors
+		}
 
-			if (!changed) {
-				return previousErrors
-			}
+		const nextErrors: Errors = {}
+		for (const key of fieldKeys) {
+			const previous = previousErrors[key] ?? ""
+			nextErrors[key] = validationTokens[key] === tokensForRun[key] ? (batchErrors[key] ?? "") : previous
 		}
 
 		return nextErrors
